@@ -3,7 +3,7 @@
     "app_id": "hwadmin-starter",
     "app_name": "HwAdmin 业务应用",
     "app_version": "1.0.0",
-    "framework_version": "1.6.1",
+    "framework_version": "1.6.2",
     "brand": {
         "name": "HwAdmin",
         "slogan": "让你的 AI 智能体读懂并快速创造应用",

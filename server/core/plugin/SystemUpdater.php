@@ -25,7 +25,7 @@ use RecursiveIteratorIterator;
  */
 class SystemUpdater
 {
-    public const CURRENT_VERSION = '1.6.1';
+    public const CURRENT_VERSION = '1.6.2';
 
     protected string $runtimeBackupDir;
     protected string $metaFile;

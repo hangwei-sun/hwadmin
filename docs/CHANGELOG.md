@@ -1,3 +1,17 @@
+## [1.6.2] - 2026-11-24
+
+### 性能优化与体验改进
+- **后端热路径缓存与游标分页**：
+  - 新增 [ConfigService.php](../server/app/common/service/ConfigService.php) 与 [DictService.php](../server/app/common/service/DictService.php)（60s 快照缓存 + 模型写操作自动失效），接入 [Index.php](../server/app/adminapi/controller/Index.php)、[Dashboard.php](../server/app/adminapi/controller/Dashboard.php)、[Config.php](../server/app/adminapi/controller/system/Config.php)、[Dict.php](../server/app/adminapi/controller/system/Dict.php) 与 [Attachment.php](../server/app/adminapi/controller/system/Attachment.php)，减少重复配置/字典查询；
+  - [CrudTrait.php](../server/core/crud/CrudTrait.php) 新增主键游标分页（`cursor` / `next_cursor` / `has_more`）与严格整数校验，[AdminLog.php](../server/app/adminapi/controller/auth/AdminLog.php) 与 [PerformanceOptimizationTest.php](../server/tests/Unit/PerformanceOptimizationTest.php) 配套覆盖。
+- **前端虚拟树与离线微视图支持**：
+  - [group/index.vue](../admin-ui/src/views/auth/group/index.vue) 权限树切换为 `ElTreeV2` 虚拟列表，提升大量权限节点下的渲染与勾选性能；
+  - [runner.vue](../admin-ui/src/views/system/plugin/runner.vue) 更新离线免编译微视图单文件 HTML 示例；
+  - [hw-deploy.py](../scripts/hw-deploy.py) 与 [test_t03_t04_prod_deploy_recovery.py](../scripts/tests/test_t03_t04_prod_deploy_recovery.py) 完善部署与恢复校验。
+- **开源社区规范与自动化发版工作流**：
+  - 新增 [CONTRIBUTING.md](../CONTRIBUTING.md)、[.github/workflows/release.yml](../.github/workflows/release.yml) 与 Issue/PR 模板，完善 [README.md](../README.md)、[AGENTS.md](../AGENTS.md) 与 [CLAUDE.md](../CLAUDE.md) 公开仓安全协作规范。
+- **版本号判定**：本次为性能优化、离线微视图与开源社区模板完善，无数据库表结构或破坏性接口变更，按 patch 从 `1.6.1` 升级至 `1.6.2`。
+
 ## [1.6.1] - 2026-11-24
 
 ### 优化与界面升级

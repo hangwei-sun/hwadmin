@@ -1250,8 +1250,8 @@ const checkingUpdates = ref(false)
 const frameworkUpdateDialogVisible = ref(false)
 const frameworkInfo = reactive<FrameworkReleaseInfo>({
   name: 'hwadmin',
-  current_version: '1.6.1',
-  latest_version: '1.6.1',
+  current_version: '1.6.2',
+  latest_version: '1.6.2',
   has_update: false,
   release_date: '',
   changelog: [],
@@ -1259,7 +1259,7 @@ const frameworkInfo = reactive<FrameworkReleaseInfo>({
   min_php: '8.1',
 })
 const displayCurrentVersion = computed(() => {
-  return frameworkInfo.current_version || '1.6.1'
+  return frameworkInfo.current_version || '1.6.2'
 })
 
 // 备份与指南抽屉/弹窗

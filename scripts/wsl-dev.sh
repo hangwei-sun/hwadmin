@@ -804,7 +804,7 @@ cmd_test() {
     command -v rsync >/dev/null || { error "隔离 PHPUnit 需要 rsync"; return 1; }
     local work
     work=$(mktemp -d /tmp/hwadmin-phpunit-suite-XXXXXX)
-    mkdir -p "$work/server" "$work/admin-ui/src/types" "$work/admin-ui/mobile/src/types"
+    mkdir -p "$work/server" "$work/admin-ui/src/types" "$work/admin-ui/src/views" "$work/admin-ui/mobile/src/types"
     rsync -a --exclude=.env --exclude='.env.*' --exclude=runtime \
         --exclude=public/uploads --exclude=public/storage --exclude=public/plugins --exclude=public/admin \
         --exclude='install.lock*' --exclude='install.token*' "$SERVER_DIR/" "$work/server/"
@@ -812,7 +812,7 @@ cmd_test() {
         [ ! -d "$PROJECT_ROOT/$directory" ] || rsync -a "$PROJECT_ROOT/$directory/" "$work/$directory/"
     done
     [ ! -f "$PROJECT_ROOT/hw.project.json" ] || cp "$PROJECT_ROOT/hw.project.json" "$work/"
-    for directory in src/types mobile/src/types; do
+    for directory in src/types src/views mobile/src/types; do
         [ ! -d "$ADMIN_UI_DIR/$directory" ] || rsync -a "$ADMIN_UI_DIR/$directory/" "$work/admin-ui/$directory/"
     done
     info "PHPUnit 隔离目录: $work"
