@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace app\adminapi\controller;
 
+use app\common\service\ConfigService;
+use app\common\service\DictService;
 use core\auth\AdminAuth;
 use core\auth\CaptchaService;
 use core\base\AdminController;
@@ -59,7 +61,7 @@ class Dashboard extends AdminController
             $trend7d = $this->aggregateTrend7d($todayStart);
 
             // 3. 系统安全态势评分（0~100）
-            $adminEntry = (string) (Db::name('config')->where('name', 'admin_entry')->value('value') ?? 'admin');
+            $adminEntry = (string) ConfigService::get('admin_entry', 'admin');
             $isCaptchaEnabled = CaptchaService::isEnabled();
             $isDebug = (bool) App::isDebug();
 
@@ -240,7 +242,7 @@ class Dashboard extends AdminController
         $adminId = (int) $this->auth->id();
         $readIds = (array) (Cache::get("admin_notices_read_{$adminId}") ?? []);
 
-        $adminEntry = (string) (Db::name('config')->where('name', 'admin_entry')->value('value') ?? 'admin');
+        $adminEntry = (string) ConfigService::get('admin_entry', 'admin');
         $isCaptchaEnabled = CaptchaService::isEnabled();
 
         $notices = [];
@@ -395,6 +397,8 @@ class Dashboard extends AdminController
             try {
                 Cache::delete(self::SUMMARY_CACHE_KEY);
                 AdminAuth::clearCache();
+                ConfigService::clearCache();
+                DictService::clearCache();
                 Cache::clear();
                 $clearedFiles += 1;
             } catch (\Throwable $e) {}

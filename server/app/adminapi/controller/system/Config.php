@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace app\adminapi\controller\system;
 
 use app\common\model\Config as ConfigModel;
+use app\common\service\ConfigService;
 use core\base\AdminController;
 use core\crud\CrudTrait;
 use core\exception\ApiException;
@@ -81,6 +82,7 @@ class Config extends AdminController
                         Db::name('config')->insert($item + ['create_time' => $now, 'update_time' => $now]);
                     }
                 }
+                ConfigService::clearCache();
             }
         }
 
@@ -143,11 +145,22 @@ class Config extends AdminController
                 $this->syncAdminEntryRuntime((string) $values['admin_entry']);
             }
 
+            ConfigService::clearCache();
             event('ConfigSaveAfter', $values);
             $this->success(null, '配置已保存');
         }
 
         $this->crudEdit();
+    }
+
+    protected function afterWrite(Model $row, array $data, bool $isNew): void
+    {
+        ConfigService::clearCache();
+    }
+
+    protected function afterDelete(array $ids): void
+    {
+        ConfigService::clearCache();
     }
 
     public function save(): void

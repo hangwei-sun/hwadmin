@@ -7,10 +7,13 @@
   <h3>让你的 AI 智能体读懂，并快速创造应用</h3>
 
   <p>
-    <img src="https://img.shields.io/badge/Version-v1.6.1-3D73F1?style=flat-square" alt="Version v1.6.1" />
+    <a href="https://github.com/hangwei-sun/hwadmin/actions/workflows/ci.yml"><img src="https://github.com/hangwei-sun/hwadmin/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
+    <a href="https://github.com/hangwei-sun/hwadmin/releases"><img src="https://img.shields.io/github/v/release/hangwei-sun/hwadmin?style=flat-square&color=3D73F1" alt="GitHub Release" /></a>
+    <a href="LICENSE.txt"><img src="https://img.shields.io/github/license/hangwei-sun/hwadmin?style=flat-square&color=blue" alt="Apache-2.0 License" /></a>
     <img src="https://img.shields.io/badge/ThinkPHP-8.1%20%7C%20PHP%208.2+-142C59?style=flat-square" alt="ThinkPHP 8.1" />
     <img src="https://img.shields.io/badge/Vue-3.5%20%7C%20Vite%20%7C%20TS-54C6AF?style=flat-square" alt="Vue 3" />
-    <img src="https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square" alt="License" />
+    <img src="https://img.shields.io/badge/uni--app-Wot%20UI%20V2-07C160?style=flat-square" alt="uni-app" />
+    <img src="https://img.shields.io/badge/Desktop-Tauri%202-FFC131?style=flat-square" alt="Tauri 2" />
   </p>
 </div>
 
@@ -23,6 +26,10 @@
 **让你的 AI 智能体读懂，并快速创造应用。** 当前源码版本 **1.6.1**。
 
 把统一完整发行包解压到工作区或服务器，告诉智能体想做什么即可开发与上线。网站、管理后台、小程序的环境准备、业务开发和上线配置，由 Agent 处理。
+
+- 🌐 **官网与插件市场**：[https://hwadmin.cn](https://hwadmin.cn)（在线文档、官方插件生态与版本动态）
+- 📦 **发行包下载**：[GitHub Releases](https://github.com/hangwei-sun/hwadmin/releases)（下载 `hwadmin-v1.6.1.zip` 或最新 Tag 发行包与 `.sha256` 校验文件）
+- ⚡ **本地 10 秒体验**：解压发行包执行 `./hw start website`（或运行下方 `docker compose up -d`），按 [START_HERE.md](START_HERE.md) 立即开启可视预览
 
 ## 你只需要这样开始
 
@@ -82,6 +89,37 @@ Windows 使用 `./hw.ps1 start ...`。命令自动选模板、准备需要的客
 
 ---
 
+## 🖼️ 界面与品牌预览
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="server/public/brand/loading-screen.webp" alt="HwAdmin 工作台加载体验" width="100%" />
+      <br />
+      <sub><b>工作台启动与加载体验</b></sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="admin-ui/public/brand/login-illustration.webp" alt="HwAdmin 管理端登录视觉" width="100%" />
+      <br />
+      <sub><b>管理端登录与视觉体系</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="admin-ui/public/brand/logo-horizontal.webp" alt="HwAdmin 浅色横版标识" width="260" />
+      <br />
+      <sub><b>品牌横版标识（浅色主题）</b></sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="admin-ui/public/brand/logo-square.webp" alt="HwAdmin 应用图标与桌面端标识" width="96" />
+      <br />
+      <sub><b>应用图标与多端标识</b></sub>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## 📁 目录结构
 
 ```
@@ -128,13 +166,16 @@ hwadmin/
 ### 方案二：Docker Compose 容器编排
 
 ```bash
-# 1. 复制配置模板并务必修改里面的数据库 / Redis 默认强口令
+# 1. 复制配置模板并务必修改里面的 DB_PASS / DB_ROOT_PASSWORD / REDIS_PASSWORD
 cp .env.docker.example .env
 
-# 2. 一键构建并拉起服务（默认 MySQL 8.0，改 COMPOSE_PROFILES=pgsql 即切换 PostgreSQL 16）
-docker compose up -d --build
+# 2. 一键拉起全套服务（默认 MySQL 8.0 + Redis 7 + Nginx + PHP 8.3）
+docker compose up -d
+
+# 如需切换 PostgreSQL 16，可将 .env 中 COMPOSE_PROFILES 改为 pgsql 或执行：
+# docker compose --profile pgsql up -d
 ```
-访问 `http://127.0.0.1:8080/install/` 完成安装向导（生产环境使用请配置 HTTPS 反向代理）。
+访问 `http://127.0.0.1:8080/install/` 完成安装向导（或使用 `.env` 中配置的 `ADMIN_INIT_USER` 自动初始化，生产环境请配置 HTTPS 反向代理）。
 
 ### 方案三：WSL + SQLite 零配置开发
 
@@ -158,12 +199,12 @@ cd admin-ui && pnpm install && pnpm check && pnpm build:sync
 
 ---
 
-## 📚 详细文档指引
+## 📚 详细文档与社区参与
 
 - 🏛️ **[系统架构设计](docs/系统架构设计.md)** · **[部署与运维指南](docs/部署与运维指南.md)** · **[单机生产运维与灾难恢复手册](docs/单机生产运维与灾难恢复手册.md)**
 - 📱 **[移动端接入指南](docs/移动端接入指南.md)** · 🖥️ **[桌面端接入指南](docs/桌面端接入指南.md)**
 - 🛠️ **开发规范**：[后端开发规范](docs/后端开发规范.md) · [前端开发规范](docs/前端开发规范.md) · [数据库开发规范](docs/数据库开发规范.md) · [接口契约规范](docs/接口契约规范.md) · [插件系统规范](docs/插件系统规范.md)
-- 📋 **[更新日志 (CHANGELOG)](docs/CHANGELOG.md)**
+- 🤝 **社区与安全**：[贡献指南 (CONTRIBUTING)](CONTRIBUTING.md) · [安全策略 (SECURITY)](SECURITY.md) · [更新日志 (CHANGELOG)](docs/CHANGELOG.md)
 
 ---
 

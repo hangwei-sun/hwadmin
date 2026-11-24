@@ -5,10 +5,12 @@ namespace app\adminapi\controller\system;
 
 use app\common\model\system\Dict as DictModel;
 use app\common\model\system\DictItem as DictItemModel;
+use app\common\service\DictService;
 use core\base\AdminController;
 use core\crud\CrudTrait;
 use core\exception\ApiException;
 use think\facade\Db;
+use think\Model;
 
 /**
  * 通用数据字典控制器
@@ -19,6 +21,7 @@ class Dict extends AdminController
 {
     use CrudTrait {
         del as protected crudDel;
+        multi as protected crudMulti;
     }
 
     protected array $searchFields = ['name', 'code', 'remark'];
@@ -31,7 +34,20 @@ class Dict extends AdminController
     {
         parent::initialize();
         $this->model = new DictModel();
-        $this->ensureSeedDicts();
+    }
+
+    public function multi(): void
+    {
+        try {
+            $this->crudMulti();
+        } finally {
+            DictService::clearCache();
+        }
+    }
+
+    protected function afterWrite(Model $row, array $data, bool $isNew): void
+    {
+        DictService::clearCache();
     }
 
     /**
@@ -49,6 +65,7 @@ class Dict extends AdminController
             DictItemModel::whereIn('dict_id', $ids)->delete();
             DictModel::whereIn('id', $ids)->delete();
         });
+        DictService::clearCache();
 
         $this->success(null, '删除成功');
     }
@@ -64,10 +81,7 @@ class Dict extends AdminController
             throw new ApiException('缺少字典ID参数');
         }
 
-        $list = DictItemModel::where('dict_id', $dictId)
-            ->order('sort', 'asc')
-            ->order('id', 'asc')
-            ->select();
+        $list = DictService::getItemsByDictId($dictId);
 
         $this->success(['list' => $list, 'total' => count($list)]);
     }
@@ -173,6 +187,7 @@ class Dict extends AdminController
         }
 
         DictItemModel::whereIn('id', $ids)->delete();
+        DictService::clearCache();
         $this->success(null, '删除成功');
     }
 
@@ -190,120 +205,6 @@ class Dict extends AdminController
             return;
         }
 
-        $dicts = DictModel::whereIn('code', $codes)
-            ->where('status', 1)
-            ->select();
-
-        $result = [];
-        foreach ($codes as $code) {
-            $result[$code] = [];
-        }
-
-        if (!$dicts->isEmpty()) {
-            $dictMap = [];
-            $dictIds = [];
-            foreach ($dicts as $dict) {
-                $dictMap[$dict->id] = $dict->code;
-                $dictIds[] = $dict->id;
-            }
-
-            $items = DictItemModel::whereIn('dict_id', $dictIds)
-                ->where('status', 1)
-                ->order('sort', 'asc')
-                ->order('id', 'asc')
-                ->select();
-
-            foreach ($items as $item) {
-                $code = $dictMap[$item->dict_id] ?? '';
-                if ($code !== '') {
-                    $result[$code][] = [
-                        'label'    => $item->label,
-                        'value'    => $item->value,
-                        'tag_type' => $item->tag_type,
-                        'sort'     => $item->sort,
-                    ];
-                }
-            }
-        }
-
-        $this->success($result);
-    }
-
-    /**
-     * 兜底自动补齐初始默认字典
-     */
-    protected function ensureSeedDicts(): void
-    {
-        static $checked = false;
-        if ($checked) {
-            return;
-        }
-        $checked = true;
-
-        try {
-            $count = DictModel::count();
-            if ($count === 0) {
-                $now = time();
-                $defaultDicts = [
-                    [
-                        'name' => '通用状态',
-                        'code' => 'common_status',
-                        'remark' => '通用数据状态枚举',
-                        'sort' => 1,
-                        'items' => [
-                            ['label' => '正常', 'value' => '1', 'tag_type' => 'success', 'sort' => 1],
-                            ['label' => '禁用', 'value' => '0', 'tag_type' => 'danger', 'sort' => 2],
-                        ],
-                    ],
-                    [
-                        'name' => '系统是否',
-                        'code' => 'sys_yes_no',
-                        'remark' => '通用是否枚举标识',
-                        'sort' => 2,
-                        'items' => [
-                            ['label' => '是', 'value' => '1', 'tag_type' => 'primary', 'sort' => 1],
-                            ['label' => '否', 'value' => '0', 'tag_type' => 'info', 'sort' => 2],
-                        ],
-                    ],
-                    [
-                        'name' => '文章分类',
-                        'code' => 'article_type',
-                        'remark' => '官方资讯分类枚举',
-                        'sort' => 3,
-                        'items' => [
-                            ['label' => '官方公告', 'value' => 'notice', 'tag_type' => 'warning', 'sort' => 1],
-                            ['label' => '技术专栏', 'value' => 'tech', 'tag_type' => 'primary', 'sort' => 2],
-                            ['label' => '版本发布', 'value' => 'release', 'tag_type' => 'success', 'sort' => 3],
-                        ],
-                    ],
-                ];
-
-                foreach ($defaultDicts as $d) {
-                    $dict = new DictModel();
-                    $dict->save([
-                        'name' => $d['name'],
-                        'code' => $d['code'],
-                        'remark' => $d['remark'],
-                        'status' => 1,
-                        'sort' => $d['sort'],
-                    ]);
-
-                    foreach ($d['items'] as $it) {
-                        $item = new DictItemModel();
-                        $item->save([
-                            'dict_id' => $dict->id,
-                            'label' => $it['label'],
-                            'value' => $it['value'],
-                            'tag_type' => $it['tag_type'],
-                            'status' => 1,
-                            'sort' => $it['sort'],
-                            'remark' => '',
-                        ]);
-                    }
-                }
-            }
-        } catch (\Throwable) {
-            // 忽略迁移前尚未建表时的异常
-        }
+        $this->success(DictService::getMapByCodes($codes));
     }
 }

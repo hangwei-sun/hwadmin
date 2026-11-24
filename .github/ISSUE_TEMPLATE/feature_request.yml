@@ -1,0 +1,49 @@
+name: 功能建议 / Feature Request
+description: 提出新特性、架构优化或插件扩展建议
+title: "[Feature]: "
+labels:
+  - enhancement
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        欢迎提出改进建议！请清晰描述业务场景与预期收益，便于社区评估与共建。
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: 涉及模块
+      multiple: true
+      options:
+        - 后端内核 (server/core)
+        - 业务接口 (server/app)
+        - PC 管理端 (admin-ui)
+        - 移动端 (admin-ui/mobile)
+        - 桌面端 (admin-ui/src-tauri)
+        - 插件系统 (server/plugins)
+        - 脚手架与文档 (scripts / docs)
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 需求背景与痛点
+      description: 描述你希望解决的问题或使用场景
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 期望的实现方案
+      description: 你理想中的交互、CLI 参数、接口或配置形式
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 补充说明或参考实现
+      description: 如有参考设计、Mock 示例或兼容性考虑，可补充在此

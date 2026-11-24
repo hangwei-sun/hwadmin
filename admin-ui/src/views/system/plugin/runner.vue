@@ -90,7 +90,7 @@
         <el-descriptions-item label="免编译微视图预期地址">
           <code>/plugins/{{ resolvedPluginName || '{name}' }}/admin.html</code>
         </el-descriptions-item>
-        <el-descriptions-item label="免编译即插即用">原生无缝支持 (Vue3 CDN / ElementPlus)</el-descriptions-item>
+        <el-descriptions-item label="免编译即插即用">原生无缝支持 (离线微视图 / PostMessage 桥接)</el-descriptions-item>
       </el-descriptions>
 
       <!-- 两种开发模式极速指引 -->
@@ -101,43 +101,47 @@
             <h4>单文件 HTML 微视图模式</h4>
           </div>
           <p class="sol-desc">
-            在插件源码根目录提供 <code>public/admin.html</code>。插件启用时将由 <code>AssetPublisher</code> 自动同步至 Web 根目录，后台将以自适应沙箱 Iframe 自动注入 Token 桥接加载，生产环境<strong>无需 Node.js 编译</strong>！
+            在插件源码根目录提供 <code>public/admin.html</code>。插件启用时将由 <code>AssetPublisher</code> 自动同步至 Web 根目录，后台将以自适应沙箱 Iframe 自动注入 Token 桥接加载，生产环境<strong>无需 Node.js 编译与外部 CDN</strong>，纯离线本地即可运行！
           </p>
           <div class="code-header">
-            <span>标准 HTML 示例 (Vue3 + Element Plus CDN)</span>
+            <span>标准离线 HTML 示例 (零外部依赖)</span>
             <el-button type="primary" link size="small" @click="copyTemplateCode">复制示例代码</el-button>
           </div>
           <pre class="code-preview"><code>&lt;!DOCTYPE html&gt;
-&lt;html&gt;
+&lt;html lang="zh-CN"&gt;
 &lt;head&gt;
   &lt;meta charset="UTF-8"&gt;
-  &lt;link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" /&gt;
-  &lt;script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"&gt;&lt;/script&gt;
-  &lt;script src="https://unpkg.com/element-plus"&gt;&lt;/script&gt;
+  &lt;style&gt;
+    body { margin: 0; padding: 20px; font-family: system-ui, -apple-system, sans-serif; background: #f8fafc; color: #1e293b; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+    .btn { padding: 8px 16px; border: none; border-radius: 6px; background: #3b82f6; color: #fff; cursor: pointer; }
+  &lt;/style&gt;
 &lt;/head&gt;
 &lt;body&gt;
-  &lt;div id="app" style="padding: 20px;"&gt;
-    &lt;el-card&gt;
-      &lt;h3&gt;欢迎使用 &#123;&#123; title &#125;&#125; 插件后台&lt;/h3&gt;
-      &lt;p&gt;当前 Token: &#123;&#123; token &#125;&#125;&lt;/p&gt;
-    &lt;/el-card&gt;
+  &lt;div class="card"&gt;
+    &lt;h3&gt;欢迎使用 {{ resolvedPluginName || 'plugin' }} 插件后台&lt;/h3&gt;
+    &lt;p&gt;认证状态: &lt;code id="token-state"&gt;等待上下文注入...&lt;/code&gt;&lt;/p&gt;
+    &lt;button class="btn" onclick="pingApi()"&gt;测试离线 API 桥接&lt;/button&gt;
   &lt;/div&gt;
   &lt;script&gt;
-    const { createApp, ref, onMounted } = Vue;
-    createApp({
-      setup() {
-        const title = ref('{{ resolvedPluginName }}');
-        const token = ref(window.__HWADMIN_CONTEXT__?.token || '');
-        onMounted(() =&gt; {
-          window.addEventListener('message', (e) =&gt; {
-            if (e.origin === window.location.origin &amp;&amp; e.data?.type === 'HWADMIN_INIT') {
-              token.value = e.data.token || '';
-            }
-          });
-        });
-        return { title, token };
+    const ctx = window.__HWADMIN_CONTEXT__ || {};
+    let token = ctx.token || '';
+    let apiBase = ctx.apiBase || '/adminapi';
+    const renderState = () =&gt; {
+      document.getElementById('token-state').textContent = token ? '已注入 (' + token.slice(0, 8) + '...)' : '未登录';
+    };
+    renderState();
+    window.addEventListener('message', (e) =&gt; {
+      if (e.origin === window.location.origin &amp;&amp; e.data?.type === 'HWADMIN_INIT') {
+        token = e.data.token || '';
+        apiBase = e.data.apiBase || apiBase;
+        renderState();
       }
-    }).use(ElementPlus).mount('#app');
+    });
+    async function pingApi() {
+      const res = await fetch(apiBase + '/index/info', { headers: { Authorization: 'Bearer ' + token } });
+      alert('HTTP ' + res.status);
+    }
   &lt;/script&gt;
 &lt;/body&gt;
 &lt;/html&gt;</code></pre>
@@ -180,7 +184,7 @@
 
 <script lang="ts" setup>
 import { openExternalUrl, serverUrl } from '/@/utils/platform'
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '/@/store/modules/user'
@@ -397,51 +401,66 @@ const goToDashboard = () => {
 
 const copyTemplateCode = async () => {
   const closeScript = '</' + 'script>'
+  const pluginLabel = resolvedPluginName.value || 'Plugin'
   const code = `<!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>${resolvedPluginName.value || 'Plugin'} Admin</title>
-  <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
-  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js">${closeScript}
-  <script src="https://unpkg.com/element-plus">${closeScript}
+  <title>${pluginLabel} Admin</title>
+  <style>
+    :root { --bg: #f8fafc; --card: #ffffff; --border: #e2e8f0; --text: #1e293b; --muted: #64748b; --primary: #3b82f6; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 20px; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 4px; background: #ecfdf5; color: #059669; font-size: 12px; }
+    .btn { margin-top: 12px; padding: 8px 16px; border: none; border-radius: 6px; background: var(--primary); color: #fff; cursor: pointer; font-size: 14px; }
+    .btn:hover { opacity: 0.9; }
+    pre { margin-top: 12px; padding: 12px; background: #0f172a; color: #e2e8f0; border-radius: 6px; font-size: 12px; overflow: auto; }
+  </style>
 </head>
-<body style="margin: 0; padding: 20px; font-family: sans-serif;">
-  <div id="app">
-    <el-card>
-      <template #header>
-        <h3>${resolvedPluginName.value || 'Plugin'} 免编译微视图</h3>
-      </template>
-      <el-alert title="无需 Node.js 编译，即插即用运行！" type="success" :closable="false" />
-      <p style="margin-top: 16px;">管理员 Token: <code>{{ token }}</code></p>
-      <el-button type="primary" @click="fetchData">获取数据</el-button>
-    </el-card>
+<body>
+  <div class="card">
+    <h3>${pluginLabel} 免编译离线微视图</h3>
+    <span class="badge">无需 Node.js 编译与外部 CDN，纯离线即插即用运行</span>
+    <p style="margin-top: 16px; color: var(--muted);">认证桥接状态: <code id="token-status">等待初始化...</code></p>
+    <button class="btn" id="fetch-btn" type="button">获取后台信息</button>
+    <pre id="result">// 点击上方按钮发起带认证桥接的本地请求</pre>
   </div>
   <script>
-    const { createApp, ref, onMounted } = Vue;
-    createApp({
-      setup() {
-        const token = ref(window.__HWADMIN_CONTEXT__?.token || '');
-        onMounted(() => {
-          window.addEventListener('message', (e) => {
-            if (e.origin === window.location.origin && e.data?.type === 'HWADMIN_INIT') {
-              token.value = e.data.token || '';
-            }
-          });
-        });
-        const fetchData = () => {
-          ElementPlus.ElMessage.success('通信正常');
-        };
-        return { token, fetchData };
+    const ctx = window.__HWADMIN_CONTEXT__ || {};
+    let token = ctx.token || '';
+    let apiBase = ctx.apiBase || '/adminapi';
+    const statusEl = document.getElementById('token-status');
+    const resultEl = document.getElementById('result');
+    const updateStatus = () => {
+      statusEl.textContent = token ? '已注入 (' + token.slice(0, 8) + '...)' : '未携带 Token';
+    };
+    updateStatus();
+    window.addEventListener('message', (e) => {
+      if (e.origin === window.location.origin && e.data?.type === 'HWADMIN_INIT') {
+        token = e.data.token || '';
+        apiBase = e.data.apiBase || apiBase;
+        updateStatus();
       }
-    }).use(ElementPlus).mount('#app');
+    });
+    document.getElementById('fetch-btn').addEventListener('click', async () => {
+      try {
+        const res = await fetch(apiBase + '/index/info', {
+          headers: token ? { Authorization: 'Bearer ' + token } : {},
+        });
+        const data = await res.json();
+        resultEl.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        resultEl.textContent = '请求失败: ' + (err?.message || err);
+      }
+    });
   ${closeScript}
 </body>
 </html>`
 
   try {
     await navigator.clipboard.writeText(code)
-    ElMessage.success('免编译微视图单文件 HTML 示例已成功复制至剪贴板！')
+    ElMessage.success('离线免编译微视图单文件 HTML 示例已成功复制至剪贴板！')
   } catch {
     ElMessage.info('复制失败，请手动在上方预览区域复制')
   }

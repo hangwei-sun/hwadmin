@@ -52,7 +52,7 @@ final class QueryParams
         $p->op = self::decode($request->param('op', []));
 
         // 兼容扁平查询参数（如 ?status=1）：排除保留分页/路由参数后合并入 filter
-        $reserved = ['page', 'pageNo', 'limit', 'pageSize', 'sort', 'order', 'keyword', 'search', 'filter', 'op', 's', 'tree', 'flat', 'keyValue', 'labelField'];
+        $reserved = ['page', 'pageNo', 'limit', 'pageSize', 'sort', 'order', 'keyword', 'search', 'filter', 'op', 's', 'tree', 'flat', 'keyValue', 'labelField', 'cursor', 'with_total'];
         foreach ($request->get() as $k => $v) {
             if (is_string($k) && !in_array($k, $reserved, true) && !isset($p->filter[$k]) && is_scalar($v) && (string) $v !== '') {
                 $p->filter[$k] = $v;

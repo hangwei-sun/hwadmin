@@ -3,7 +3,10 @@ declare(strict_types=1);
 
 namespace tests\Unit;
 
+use app\common\service\ConfigService;
+use app\common\service\DictService;
 use core\auth\AdminAuth;
+use core\auth\CaptchaService;
 use core\auth\LoginThrottle;
 use core\auth\TokenService;
 use core\plugin\AssetPublisher;
@@ -405,5 +408,189 @@ SQL;
         $rm = new \ReflectionMethod(LoginThrottle::class, 'hasDegradedFallback');
         $rm->setAccessible(true);
         $this->assertFalse((bool) $rm->invoke(null));
+    }
+
+    public function testConfigServiceAndDictServiceCachingAndWriteInvalidation(): void
+    {
+        ConfigService::clearCache();
+        DictService::clearCache();
+
+        // 1. ConfigService 60s 缓存命中与写失效
+        $origSiteName = (string) Db::name('config')->where('name', 'site_name')->value('value');
+        $origCaptcha = (string) (Db::name('config')->where('name', 'login_captcha')->value('value') ?? '1');
+
+        try {
+            // 预热缓存
+            $initialCfg = $this->dispatchHttp('GET', '/adminapi/index/config');
+            $this->assertApiSuccess($initialCfg);
+            $this->assertSame($origSiteName, $initialCfg['data']['site_name']);
+            $this->assertTrue(Cache::has(ConfigService::CACHE_KEY));
+
+            // 绕过 Service 直接改库时，60s 缓存期内应仍命中缓存值（证明未重复查库）
+            Db::name('config')->where('name', 'site_name')->update(['value' => 'DbBypassSiteName']);
+            $cachedResp = $this->dispatchHttp('GET', '/adminapi/index/config');
+            $this->assertApiSuccess($cachedResp);
+            $this->assertSame($origSiteName, $cachedResp['data']['site_name'], '60s 缓存命中期内应返回缓存值');
+
+            // 通过 System/Config 接口写入新值，必须触发写失效并立即生效（含 CaptchaService）
+            $editResp = $this->adminPost('/adminapi/system.config/edit', [
+                'values' => [
+                    'site_name'     => 'UpdatedCachedSite',
+                    'login_captcha' => '0',
+                ],
+            ]);
+            $this->assertApiSuccess($editResp);
+
+            $afterEditResp = $this->dispatchHttp('GET', '/adminapi/index/config');
+            $this->assertApiSuccess($afterEditResp);
+            $this->assertSame('UpdatedCachedSite', $afterEditResp['data']['site_name']);
+            $this->assertFalse($afterEditResp['data']['login_captcha']);
+            $this->assertFalse(CaptchaService::isEnabled());
+        } finally {
+            Db::name('config')->where('name', 'site_name')->update(['value' => $origSiteName]);
+            Db::name('config')->where('name', 'login_captcha')->update(['value' => $origCaptcha]);
+            ConfigService::clearCache();
+        }
+
+        // 2. DictService 60s 缓存命中、写失效以及移除 Dict::initialize() 自动插库校验
+        $dictCode = 'perf_cache_dict_' . bin2hex(random_bytes(3));
+        $dictId = (int) Db::name('dict')->insertGetId([
+            'name'        => '缓存测试字典',
+            'code'        => $dictCode,
+            'remark'      => '',
+            'status'      => 1,
+            'sort'        => 99,
+            'create_time' => time(),
+            'update_time' => time(),
+        ]);
+
+        try {
+            $map1 = $this->adminGet('/adminapi/system.dict/map', ['codes' => $dictCode]);
+            $this->assertApiSuccess($map1);
+            $this->assertSame([], $map1['data'][$dictCode]);
+            $this->assertTrue(Cache::has(DictService::MAP_CACHE_KEY));
+
+            // 绕过接口直接插表时，命中缓存仍为空
+            Db::name('dict_item')->insert([
+                'dict_id'     => $dictId,
+                'label'       => 'BypassItem',
+                'value'       => 'bypass',
+                'tag_type'    => 'info',
+                'status'      => 1,
+                'sort'        => 1,
+                'remark'      => '',
+                'create_time' => time(),
+                'update_time' => time(),
+            ]);
+            $mapCached = $this->adminGet('/adminapi/system.dict/map', ['codes' => $dictCode]);
+            $this->assertSame([], $mapCached['data'][$dictCode]);
+
+            // 通过 itemAdd 写入必须立即失效缓存，map 与 items 接口同步看到新增项
+            $addItemResp = $this->adminPost('/adminapi/system.dict/itemAdd', [
+                'dict_id' => $dictId,
+                'label'   => 'FreshItem',
+                'value'   => 'fresh',
+                'status'  => 1,
+                'sort'    => 2,
+            ]);
+            $this->assertApiSuccess($addItemResp);
+
+            $mapAfter = $this->adminGet('/adminapi/system.dict/map', ['codes' => $dictCode]);
+            $this->assertApiSuccess($mapAfter);
+            $values = array_column($mapAfter['data'][$dictCode], 'value');
+            $this->assertContains('fresh', $values);
+            $this->assertContains('bypass', $values);
+
+            $itemsResp = $this->adminGet('/adminapi/system.dict/items', ['dict_id' => $dictId]);
+            $this->assertApiSuccess($itemsResp);
+            $this->assertCount(2, $itemsResp['data']['list']);
+        } finally {
+            Db::name('dict_item')->where('dict_id', $dictId)->delete();
+            Db::name('dict')->where('id', $dictId)->delete();
+            DictService::clearCache();
+        }
+
+        // 验证 Dict 控制器已移除 initialize() 中的 ensureSeedDicts()
+        $dictSrc = (string) file_get_contents(dirname(__DIR__, 2) . '/app/adminapi/controller/system/Dict.php');
+        $this->assertStringNotContainsString('ensureSeedDicts', $dictSrc);
+    }
+
+    public function testAdminLogCursorPaginationBackwardCompatibilityAndInvalidCursorRejection(): void
+    {
+        $insertedIds = [];
+        $now = time();
+        try {
+            for ($i = 1; $i <= 5; $i++) {
+                $insertedIds[] = (int) Db::name('admin_log')->insertGetId([
+                    'admin_id'    => 1,
+                    'username'    => 'cursor_test_' . $i,
+                    'url'         => '/adminapi/cursor/test/' . $i,
+                    'title'       => '游标分页测试 ' . $i,
+                    'content'     => '{}',
+                    'ip'          => '127.0.0.1',
+                    'useragent'   => 'PHPUnit',
+                    'create_time' => $now + $i,
+                ]);
+            }
+
+            // 1. 向后兼容：不传 cursor 参数时保持传统 {list, total} 分页行为
+            $offsetResp = $this->adminGet('/adminapi/auth.admin_log/index', ['page' => 1, 'limit' => 2]);
+            $this->assertApiSuccess($offsetResp);
+            $this->assertArrayHasKey('list', $offsetResp['data']);
+            $this->assertArrayHasKey('total', $offsetResp['data']);
+            $this->assertGreaterThanOrEqual(5, (int) $offsetResp['data']['total']);
+            $this->assertCount(2, $offsetResp['data']['list']);
+
+            // 2. 游标分页正例：cursor=0 拉取第一页 -> cursor=next_cursor 拉取下一页（无重复且顺序严格递减）
+            $page1 = $this->adminGet('/adminapi/auth.admin_log/index', ['cursor' => 0, 'limit' => 2]);
+            $this->assertApiSuccess($page1);
+            $this->assertTrue($page1['data']['cursor_mode']);
+            $this->assertTrue($page1['data']['has_more']);
+            $this->assertCount(2, $page1['data']['list']);
+            $nextCursor = (int) $page1['data']['next_cursor'];
+            $this->assertGreaterThan(0, $nextCursor);
+            $this->assertSame((int) $page1['data']['list'][1]['id'], $nextCursor);
+
+            $page2 = $this->adminGet('/adminapi/auth.admin_log/index', ['cursor' => $nextCursor, 'limit' => 2]);
+            $this->assertApiSuccess($page2);
+            $this->assertCount(2, $page2['data']['list']);
+            foreach ($page2['data']['list'] as $row) {
+                $this->assertLessThan($nextCursor, (int) $row['id']);
+            }
+
+            // 3. 反例：非法 cursor 参数与非主板排序参数必须拦截返回 code=0
+            foreach (['-1', 'abc', '1.5', '', '99999999999999999999999'] as $badCursor) {
+                $badResp = $this->adminGet('/adminapi/auth.admin_log/index', ['cursor' => $badCursor, 'limit' => 2]);
+                $this->assertSame(0, $badResp['code'] ?? null, "非法 cursor [{$badCursor}] 未被拦截");
+            }
+
+            $badSortResp = $this->adminGet('/adminapi/auth.admin_log/index', ['cursor' => 10, 'sort' => 'username']);
+            $this->assertSame(0, $badSortResp['code'] ?? null, '非主键 sort 搭配 cursor 必须被拦截');
+
+            // 未启用游标分页的控制器（如 CrudTrait 默认的 user.user/index）传入 cursor 也必须拦截
+            $unsupportedResp = $this->adminGet('/adminapi/user.user/index', ['cursor' => 1]);
+            $this->assertSame(0, $unsupportedResp['code'] ?? null, '未启用游标分页的控制器应拒绝 cursor 参数');
+        } finally {
+            if ($insertedIds) {
+                Db::name('admin_log')->whereIn('id', $insertedIds)->delete();
+            }
+        }
+    }
+
+    public function testRunnerOfflineAndGroupTreeV2Contracts(): void
+    {
+        $repoRoot = dirname(__DIR__, 3);
+        $runnerPath = $repoRoot . '/admin-ui/src/views/system/plugin/runner.vue';
+        $this->assertFileExists($runnerPath);
+        $runnerSrc = (string) file_get_contents($runnerPath);
+        $this->assertStringNotContainsString('unpkg.com', $runnerSrc, 'runner.vue 不得包含 unpkg.com 外链');
+        $this->assertStringContainsString('__HWADMIN_CONTEXT__', $runnerSrc);
+        $this->assertStringContainsString('HWADMIN_INIT', $runnerSrc);
+
+        $groupPath = $repoRoot . '/admin-ui/src/views/auth/group/index.vue';
+        $this->assertFileExists($groupPath);
+        $groupSrc = (string) file_get_contents($groupPath);
+        $this->assertStringContainsString('el-tree-v2', $groupSrc, 'auth/group/index.vue 必须改用 el-tree-v2');
+        $this->assertDoesNotMatchRegularExpression('/<el-tree(?![-a-z])/', $groupSrc, 'auth/group/index.vue 不应保留旧版 <el-tree>');
     }
 }

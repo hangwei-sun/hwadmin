@@ -3,7 +3,9 @@ declare(strict_types=1);
 
 namespace app\common\model\system;
 
+use app\common\service\DictService;
 use core\base\UnixTimeModel;
+use think\Model;
 use think\model\relation\HasMany;
 
 /**
@@ -16,6 +18,16 @@ class Dict extends UnixTimeModel
     protected $autoWriteTimestamp = true;
     protected $createTime = 'create_time';
     protected $updateTime = 'update_time';
+
+    public static function onAfterWrite(Model $model): void
+    {
+        DictService::clearCache();
+    }
+
+    public static function onAfterDelete(Model $model): void
+    {
+        DictService::clearCache();
+    }
 
     /**
      * 关联字典明细项

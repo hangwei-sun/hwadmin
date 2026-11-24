@@ -210,6 +210,70 @@ def run_php_cmd(work_dir: Path, args_list: list) -> tuple:
     return 127, "", "未找到可用的 PHP 运行时"
 
 
+ADMIN_ENTRY_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{3,32}$")
+ADMIN_ENTRY_RESERVED = {
+    "api", "adminapi", "install", "static", "storage", "plugins",
+    "index", "core", "config", "runtime", "view",
+}
+
+
+def is_valid_admin_entry(entry: str) -> bool:
+    s = str(entry or "").strip()
+    return bool(ADMIN_ENTRY_PATTERN.fullmatch(s)) and s.lower() not in ADMIN_ENTRY_RESERVED
+
+
+def resolve_admin_entry(
+    base_url: str,
+    headers: dict = None,
+    server_roots: list = None,
+    verify_tls: bool = True,
+) -> str:
+    """Resolve dynamic admin_entry from /adminapi/index/config, then runtime files/SQLite, falling back to 'admin'."""
+    try:
+        status, _, body_bytes = http_get_response(
+            f"{base_url}/adminapi/index/config",
+            headers=headers,
+            timeout=3.0,
+            verify_tls=verify_tls,
+        )
+        if status == 200:
+            payload = json.loads(body_bytes.decode("utf-8", errors="ignore"))
+            if isinstance(payload, dict) and payload.get("code") == 1:
+                data = payload.get("data") or {}
+                if isinstance(data, dict):
+                    entry = str(data.get("admin_entry") or "").strip()
+                    if is_valid_admin_entry(entry):
+                        return entry
+    except Exception:
+        pass
+
+    for root in (server_roots or []):
+        if not root:
+            continue
+        root_path = Path(root)
+        for rel in ("runtime/admin_entry.txt", "runtime/adminapi/admin_entry.txt", "server/runtime/admin_entry.txt"):
+            rf = root_path / rel
+            if rf.is_file():
+                try:
+                    entry = rf.read_text(encoding="utf-8", errors="ignore").strip()
+                    if is_valid_admin_entry(entry):
+                        return entry
+                except Exception:
+                    pass
+        for rel_db in ("runtime/hwadmin.sqlite", "runtime/dev.sqlite", "server/runtime/hwadmin.sqlite", "server/runtime/dev.sqlite"):
+            db_file = root_path / rel_db
+            if db_file.is_file():
+                try:
+                    with closing(sqlite3.connect(str(db_file))) as conn:
+                        row = conn.execute("SELECT value FROM hw_config WHERE name='admin_entry' LIMIT 1").fetchone()
+                        if row and is_valid_admin_entry(str(row[0] or "")):
+                            return str(row[0]).strip()
+                except Exception:
+                    pass
+
+    return "admin"
+
+
 def run_http_health_probe(server_dir: Path) -> tuple:
     """在隔离目标目录拉起临时内置 HTTP 服务并执行真实业务健康探针（仅 --target=local 使用）"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -277,11 +341,32 @@ def run_http_health_probe(server_dir: Path) -> tuple:
         except Exception as e:
             return False, f"鉴权探针 /adminapi/index/info 请求异常: {e}"
 
+        admin_entry = resolve_admin_entry(base_url, server_roots=[server_dir])
+        admin_entry_status = None
+        if (server_dir / "public/admin/index.html").is_file():
+            try:
+                admin_status, _, _ = http_get_response(f"{base_url}/{admin_entry}/", timeout=2.0)
+                if admin_status not in (200, 304):
+                    return False, f"管理端入口 /{admin_entry}/ 返回异常状态码: {admin_status}"
+                admin_entry_status = admin_status
+            except Exception as e:
+                return False, f"管理端入口 /{admin_entry}/ 请求异常: {e}"
+
+            if admin_entry != "admin":
+                try:
+                    legacy_status, _, _ = http_get_response(f"{base_url}/admin/", timeout=2.0)
+                    if legacy_status == 200:
+                        return False, f"安全拦截：已配置自定义入口 /{admin_entry}/，但默认 /admin/ 仍返回 200"
+                except Exception:
+                    pass
+
         return True, {
             "probe_mode": "local_php_cli",
             "ping_url": f"{base_url}/api/index/ping",
             "ping_code": ping_payload.get("code"),
             "auth_guard_code": 401,
+            "admin_entry": admin_entry,
+            "admin_entry_status": admin_entry_status,
         }
     finally:
         if proc and proc.poll() is None:
@@ -1599,9 +1684,8 @@ def generate_prod_nginx_conf(domain: str = None, use_https: bool = False, server
         "    location ~ /\\. { return 404; }\n"
         "    location ~* \\.(sql|bak|inc|old|env|sqlite|zip)$ { return 404; }\n"
         "    location = /admin/index.html {\n"
-        "        try_files $uri /index.php?s=/index/Index/entry/entry/admin;\n"
-        "        add_header X-Content-Type-Options nosniff always;\n"
         '        add_header Cache-Control "no-cache" always;\n'
+        "        rewrite ^(.*)$ /index.php?s=/admin last;\n"
         "    }\n"
         "    location ~* ^/admin/static/ {\n"
         "        try_files $uri =404;\n"
@@ -1609,9 +1693,13 @@ def generate_prod_nginx_conf(domain: str = None, use_https: bool = False, server
         "        add_header X-Content-Type-Options nosniff always;\n"
         '        add_header Cache-Control "public, max-age=31536000, immutable";\n'
         "    }\n"
-        "    location = /admin { absolute_redirect off; return 301 /admin/; }\n"
-        "    location /admin/ {\n"
-        "        try_files $uri /index.php?s=/index/Index/entry/entry/admin;\n"
+        "    location = /admin { rewrite ^(.*)$ /index.php?s=/admin last; }\n"
+        "    location = /admin/ {\n"
+        '        add_header Cache-Control "no-cache" always;\n'
+        "        rewrite ^(.*)$ /index.php?s=/admin last;\n"
+        "    }\n"
+        "    location ^~ /admin/ {\n"
+        "        try_files $uri =404;\n"
         "    }\n"
         "    location /uploads/ {\n"
         "        try_files $uri =404;\n"
@@ -1802,7 +1890,7 @@ def run_production_health_probe(
     真实生产健康探针：
     1. 校验容器编排服务运行态（nginx + php-fpm + redis + mysql/postgres）
     2. 明确检查并拒绝 php -S 内置开发服务器进程与响应头
-    3. 探测真实 HTTP/HTTPS 业务端点 (/api/index/ping, /adminapi/index/info, /admin/)
+    3. 探测真实 HTTP/HTTPS 业务端点 (/api/index/ping, /adminapi/index/info, /{admin_entry}/)
     """
     expected_db = "hwadmin-postgres" if db_driver == "pgsql" else "hwadmin-mysql"
     required_services = {"hwadmin-nginx", "hwadmin-php", "hwadmin-redis", expected_db}
@@ -1913,18 +2001,40 @@ def run_production_health_probe(
     except Exception as e:
         return False, f"鉴权探针 /adminapi/index/info 请求异常: {e}"
 
-    # 校验前端管理端入口 /admin/
+    # 校验前端管理端入口 /{admin_entry}/（支持自定义安全入口）
+    admin_entry = resolve_admin_entry(
+        base_url,
+        headers=req_headers,
+        server_roots=[compose_ctx.get("cwd")],
+        verify_tls=False,
+    )
     try:
-        admin_status, _, _ = http_get_response(
-            f"{base_url}/admin/",
+        admin_status, admin_hdrs, _ = http_get_response(
+            f"{base_url}/{admin_entry}/",
             headers=req_headers,
             timeout=3.0,
             verify_tls=False,
         )
+        admin_server = admin_hdrs.get("server", "")
+        if re.search(r"PHP/\S*\s*Development\s+Server", admin_server, re.I):
+            return False, f"安全拦截：目标端口响应 Server={admin_server} 为 PHP 内置开发服务器"
         if admin_status not in (200, 304):
-            return False, f"管理端静态入口 /admin/ 返回异常状态码: {admin_status}"
+            return False, f"管理端静态入口 /{admin_entry}/ 返回异常状态码: {admin_status}"
     except Exception as e:
-        return False, f"管理端静态入口 /admin/ 请求异常: {e}"
+        return False, f"管理端静态入口 /{admin_entry}/ 请求异常: {e}"
+
+    if admin_entry != "admin":
+        try:
+            legacy_status, _, _ = http_get_response(
+                f"{base_url}/admin/",
+                headers=req_headers,
+                timeout=3.0,
+                verify_tls=False,
+            )
+            if legacy_status == 200:
+                return False, f"安全拦截：已配置自定义入口 /{admin_entry}/，但默认 /admin/ 仍返回 200"
+        except Exception:
+            pass
 
     return True, {
         "probe_mode": "production_container",
@@ -1933,6 +2043,8 @@ def run_production_health_probe(
         "ping_url": f"{base_url}/api/index/ping",
         "ping_code": ping_payload.get("code"),
         "auth_guard_code": 401,
+        "admin_entry": admin_entry,
+        "admin_entry_url": f"{base_url}/{admin_entry}/",
         "admin_entry_status": admin_status,
         "services": service_states,
     }

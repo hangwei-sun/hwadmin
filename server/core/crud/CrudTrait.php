@@ -32,12 +32,95 @@ trait CrudTrait
         $params = QueryParams::fromRequest($this->request);
         $query = $this->buildIndexQuery();
         $params->apply($query, $this->filterableFields(), $this->searchFields, $this->defaultSort, $this->sortableFields());
+
+        $hasCursorParam = $this->request->has('cursor', 'param') || array_key_exists('cursor', $this->request->get());
+        if ($hasCursorParam) {
+            $this->handleCursorIndex($query, $params);
+        }
+
         $total = (clone $query)->removeOption('order')->count();
         $list = $query->page($params->page, $params->limit)->select();
         if ($this->hiddenFields) {
             $list->hidden($this->hiddenFields);
         }
+
+        if ($this->isCursorSupported() && $this->canUseCursorSort($params)) {
+            $rows = $list->toArray();
+            $pk = (string) $this->model->getPk();
+            $hasMore = ($params->page * $params->limit) < $total;
+            $lastRow = $rows ? $rows[count($rows) - 1] : null;
+            $this->page($rows, $total, [
+                'has_more'    => $hasMore,
+                'next_cursor' => ($hasMore && is_array($lastRow) && isset($lastRow[$pk])) ? (int) $lastRow[$pk] : null,
+            ]);
+        }
+
         $this->page($list, $total);
+    }
+
+    protected function isCursorSupported(): bool
+    {
+        return property_exists($this, 'supportsCursor') && (bool) $this->supportsCursor;
+    }
+
+    protected function canUseCursorSort(QueryParams $params): bool
+    {
+        $pk = (string) $this->model->getPk();
+        if ($params->sort !== '') {
+            return $params->sort === $pk;
+        }
+        return $this->defaultSort === $pk;
+    }
+
+    protected function handleCursorIndex($query, QueryParams $params): never
+    {
+        if (!$this->isCursorSupported()) {
+            throw new ApiException('当前接口未启用游标分页');
+        }
+        if (!$this->canUseCursorSort($params)) {
+            throw new ApiException('游标分页仅支持按主键排序');
+        }
+
+        $rawCursor = $this->request->param('cursor');
+        if (!is_scalar($rawCursor)) {
+            throw new ApiException('非法的 cursor 参数：格式错误');
+        }
+        $cursorStr = trim((string) $rawCursor);
+        if ($cursorStr === '' || !preg_match('/^\d+$/', $cursorStr)) {
+            throw new ApiException('非法的 cursor 参数：必须为非负整数');
+        }
+        if (strlen($cursorStr) > 19 || (strlen($cursorStr) === 19 && strcmp($cursorStr, (string) PHP_INT_MAX) > 0)) {
+            throw new ApiException('非法的 cursor 参数：数值超出范围');
+        }
+        $cursor = (int) $cursorStr;
+
+        $pk = (string) $this->model->getPk();
+        $countQuery = clone $query;
+        if ($cursor > 0) {
+            $op = $params->order === 'asc' ? '>' : '<';
+            $query->where($pk, $op, $cursor);
+        }
+
+        $rowsCollection = $query->limit($params->limit + 1)->select();
+        if ($this->hiddenFields) {
+            $rowsCollection->hidden($this->hiddenFields);
+        }
+        $rows = $rowsCollection->toArray();
+        $hasMore = count($rows) > $params->limit;
+        if ($hasMore) {
+            $rows = array_slice($rows, 0, $params->limit);
+        }
+        $lastRow = $rows ? $rows[count($rows) - 1] : null;
+        $nextCursor = ($hasMore && is_array($lastRow) && isset($lastRow[$pk])) ? (int) $lastRow[$pk] : null;
+        $withTotal = in_array(strtolower((string) $this->request->param('with_total', '0')), ['1', 'true'], true);
+        $total = $withTotal ? (int) $countQuery->removeOption('order')->count() : 0;
+
+        $this->page($rows, $total, [
+            'cursor'      => $cursor,
+            'next_cursor' => $nextCursor,
+            'has_more'    => $hasMore,
+            'cursor_mode' => true,
+        ]);
     }
 
     public function read(): void

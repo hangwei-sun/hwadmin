@@ -111,16 +111,14 @@
               <el-button size="small" @click="handleExpandAll(true)">全部展开</el-button>
               <el-button size="small" @click="handleExpandAll(false)">全部折叠</el-button>
             </div>
-            <el-scrollbar max-height="280px">
-              <el-tree
-                ref="treeRef"
-                :data="ruleTree"
-                :props="{ label: 'title', children: 'children' }"
-                show-checkbox
-                node-key="id"
-                default-expand-all
-              />
-            </el-scrollbar>
+            <el-tree-v2
+              ref="treeRef"
+              :data="ruleTree"
+              :props="{ value: 'id', label: 'title', children: 'children' }"
+              :height="280"
+              :default-expanded-keys="allRuleKeys"
+              show-checkbox
+            />
           </div>
         </el-form-item>
 
@@ -147,7 +145,7 @@
 
 <script lang="ts" setup>
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type ElTree } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type ElTreeV2 } from 'element-plus'
 import { getGroupList, addGroup, editGroup, delGroup, getRuleList } from '/@/api/hwadmin'
 import dayjs from 'dayjs'
 
@@ -164,7 +162,38 @@ const isSuperAdminGroup = ref(false)
 
 const tableData = ref<any[]>([])
 const ruleTree = ref<any[]>([])
-const treeRef = ref<InstanceType<typeof ElTree>>()
+const treeRef = ref<InstanceType<typeof ElTreeV2>>()
+
+const allRuleKeys = computed<number[]>(() => {
+  const keys: number[] = []
+  const traverse = (nodes: any[]) => {
+    nodes.forEach((n) => {
+      if (n?.id !== undefined && n?.id !== null) {
+        keys.push(Number(n.id))
+      }
+      if (Array.isArray(n?.children) && n.children.length > 0) {
+        traverse(n.children)
+      }
+    })
+  }
+  traverse(ruleTree.value)
+  return keys
+})
+
+const leafRuleKeySet = computed<Set<number>>(() => {
+  const leafSet = new Set<number>()
+  const traverse = (nodes: any[]) => {
+    nodes.forEach((n) => {
+      if (Array.isArray(n?.children) && n.children.length > 0) {
+        traverse(n.children)
+      } else if (n?.id !== undefined && n?.id !== null) {
+        leafSet.add(Number(n.id))
+      }
+    })
+  }
+  traverse(ruleTree.value)
+  return leafSet
+})
 
 const formRef = ref<FormInstance>()
 const form = reactive({
@@ -215,6 +244,12 @@ const handleAdd = () => {
   isSuperAdminGroup.value = false
   resetForm()
   dialogVisible.value = true
+  nextTick(() => {
+    if (treeRef.value) {
+      treeRef.value.setCheckedKeys([])
+      treeRef.value.setExpandedKeys(allRuleKeys.value)
+    }
+  })
 }
 
 const handleEdit = (row: any) => {
@@ -229,10 +264,12 @@ const handleEdit = (row: any) => {
 
   nextTick(() => {
     if (treeRef.value && !isSuperAdminGroup.value) {
+      const leafSet = leafRuleKeySet.value
       const ids = (row.rules ? row.rules.split(',') : [])
         .map((id: string) => Number(id.trim()))
-        .filter((n: number) => !isNaN(n) && n > 0)
-      treeRef.value.setCheckedKeys(ids, false)
+        .filter((n: number) => !isNaN(n) && n > 0 && (leafSet.size === 0 || leafSet.has(n)))
+      treeRef.value.setCheckedKeys(ids)
+      treeRef.value.setExpandedKeys(allRuleKeys.value)
     }
   })
 }
@@ -250,27 +287,12 @@ const resetForm = () => {
 
 const handleCheckAll = (checked: boolean) => {
   if (!treeRef.value) return
-  if (checked) {
-    const allKeys: number[] = []
-    const traverse = (nodes: any[]) => {
-      nodes.forEach((n) => {
-        allKeys.push(n.id)
-        if (n.children && n.children.length) traverse(n.children)
-      })
-    }
-    traverse(ruleTree.value)
-    treeRef.value.setCheckedKeys(allKeys)
-  } else {
-    treeRef.value.setCheckedKeys([])
-  }
+  treeRef.value.setCheckedKeys(checked ? allRuleKeys.value : [])
 }
 
 const handleExpandAll = (expand: boolean) => {
   if (!treeRef.value) return
-  const nodes = (treeRef.value as any).store?.nodesMap
-  for (const key in nodes) {
-    nodes[key].expanded = expand
-  }
+  treeRef.value.setExpandedKeys(expand ? allRuleKeys.value : [])
 }
 
 const handleSubmit = async () => {

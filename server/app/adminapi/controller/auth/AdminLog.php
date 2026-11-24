@@ -18,6 +18,7 @@ class AdminLog extends AdminController
     use CrudTrait;
 
     protected bool $recordLog = false;
+    protected bool $supportsCursor = true;
 
     protected array $searchFields = ['username', 'url', 'title', 'ip'];
     protected array $filterFields = ['id', 'admin_id', 'username', 'ip', 'create_time'];

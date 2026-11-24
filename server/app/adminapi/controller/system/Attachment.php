@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace app\adminapi\controller\system;
 
 use app\common\model\Attachment as AttachmentModel;
+use app\common\service\ConfigService;
 use core\base\AdminController;
 use core\crud\CrudTrait;
 use core\exception\ApiException;
@@ -130,14 +131,14 @@ class Attachment extends AdminController
         }
 
         // 读取单文件最大大小配置（<= 1024 视为 MB，自动乘以 1024 * 1024；> 1024 视为字节）
-        $maxSizeCfg = Db::name('config')->where('name', 'upload_max_size')->value('value');
+        $maxSizeCfg = ConfigService::get('upload_max_size');
         $maxSizeNum = is_numeric($maxSizeCfg) ? (float) $maxSizeCfg : 50.0;
         $maxSize = $maxSizeNum <= 1024 ? (int) ($maxSizeNum * 1024 * 1024) : (int) $maxSizeNum;
         if ($maxSize <= 0) {
             $maxSize = 52428800; // 默认 50MB
         }
 
-        $allowExtsStr = (string) (Db::name('config')->where('name', 'upload_allow_ext')->value('value')
+        $allowExtsStr = (string) (ConfigService::get('upload_allow_ext')
             ?: 'jpg,jpeg,png,gif,webp,bmp,ico,mp4,webm,mov,m4v,mp3,wav,ogg,pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar,7z,txt,csv,md');
         $allowExts = array_values(array_filter(array_map(
             static fn ($s) => strtolower(trim($s)),
@@ -213,7 +214,7 @@ class Attachment extends AdminController
         $dateDir = date('Ymd');
         $rawStorage = $this->request->post('storage');
         if ($rawStorage === null || $rawStorage === '' || $rawStorage === 'default') {
-            $storage = (string) Db::name('config')->where('name', 'upload_storage')->value('value');
+            $storage = (string) ConfigService::get('upload_storage', '');
         } else {
             $storage = (string) $rawStorage;
         }

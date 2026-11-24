@@ -3,10 +3,10 @@ declare(strict_types=1);
 
 namespace app\adminapi\controller;
 
+use app\common\service\ConfigService;
 use core\auth\CaptchaService;
 use core\base\AdminController;
 use core\exception\ApiException;
-use think\facade\Db;
 
 /**
  * 后台入口：登录、退出、当前管理员信息、菜单与图形验证码
@@ -29,9 +29,7 @@ class Index extends AdminController
      */
     public function config(): void
     {
-        $configs = Db::name('config')
-            ->whereIn('group', ['basic', 'security'])
-            ->column('value', 'name');
+        $configs = ConfigService::getByGroup(['basic', 'security']);
 
         $this->success([
             'site_name'      => (string) ($configs['site_name'] ?? 'HwAdmin'),
@@ -96,9 +94,7 @@ class Index extends AdminController
 
     public function info(): void
     {
-        $configs = Db::name('config')
-            ->whereIn('group', ['basic', 'security'])
-            ->column('value', 'name');
+        $configs = ConfigService::getByGroup(['basic', 'security']);
 
         $site = [
             'site_name'      => (string) ($configs['site_name'] ?? 'HwAdmin'),

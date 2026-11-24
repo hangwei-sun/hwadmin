@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞私密上报 / Security Vulnerability
+    url: https://github.com/hangwei-sun/hwadmin/security/advisories/new
+    about: 请勿在公开 Issue 披露安全漏洞，请通过 GitHub Security Advisories 私密提交（详见 SECURITY.md）
+  - name: 部署与使用文档 / Documentation
+    url: https://github.com/hangwei-sun/hwadmin/blob/main/START_HERE.md
+    about: 查阅 AI 智能体快速上手指南与项目部署运维文档

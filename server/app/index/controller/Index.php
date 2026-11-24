@@ -3,9 +3,9 @@ declare(strict_types=1);
 
 namespace app\index\controller;
 
+use app\common\service\ConfigService;
 use core\plugin\PluginManager;
 use core\support\AdminEntry;
-use think\facade\Db;
 use think\Response;
 
 /**
@@ -162,13 +162,7 @@ class Index
      */
     protected function loadConfigs(): array
     {
-        try {
-            return Db::name('config')
-                ->whereIn('group', ['basic', 'security'])
-                ->column('value', 'name');
-        } catch (\Throwable) {
-            return [];
-        }
+        return ConfigService::getByGroup(['basic', 'security']);
     }
 
     /**

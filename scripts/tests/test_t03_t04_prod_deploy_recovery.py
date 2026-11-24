@@ -791,6 +791,76 @@ class DropT04ColumnDestructive extends Migrator {
         ):
             self.assertIn(expected, src_text)
 
+    def test_production_probe_supports_dynamic_admin_entry_and_blocks_exposed_default_admin(self):
+        compose_ctx = {
+            "compose_cmd": ["docker", "compose"],
+            "compose_file": self.root / "docker-compose.prod.yml",
+            "env_file": None,
+            "cwd": self.root,
+        }
+
+        def fake_run_ok(cmd, cwd=None, env=None, stdin_bytes=None, timeout=300):
+            if "--format" in cmd and "ps" in cmd:
+                return 0, json.dumps([
+                    {"Service": "hwadmin-nginx", "State": "running"},
+                    {"Service": "hwadmin-php", "State": "running"},
+                    {"Service": "hwadmin-redis", "State": "running"},
+                    {"Service": "hwadmin-mysql", "State": "running"},
+                ]).encode("utf-8"), b""
+            if "-eo" in cmd:
+                return 0, b"php-fpm: master process\n", b""
+            return 0, b"", b""
+
+        # 正例：自定义入口 /my_panel/ 返回 200，原默认 /admin/ 返回 404 -> 探针通过
+        def http_custom_ok(url, **kwargs):
+            if url.endswith("/api/index/ping"):
+                return 200, {"server": "nginx/1.26.2"}, b'{"code":1}'
+            if url.endswith("/adminapi/index/info"):
+                return 401, {"server": "nginx/1.26.2"}, b'{"code":401}'
+            if url.endswith("/adminapi/index/config"):
+                return 200, {"server": "nginx/1.26.2"}, b'{"code":1,"data":{"admin_entry":"my_panel"}}'
+            if url.endswith("/my_panel/"):
+                return 200, {"server": "nginx/1.26.2"}, b"<html>custom admin</html>"
+            if url.endswith("/admin/"):
+                return 404, {"server": "nginx/1.26.2"}, b"404 Not Found"
+            return 404, {"server": "nginx/1.26.2"}, b""
+
+        with patch.object(deploy, "run_subprocess", side_effect=fake_run_ok), \
+             patch.object(deploy, "http_get_response", side_effect=http_custom_ok):
+            ok, detail = deploy.run_production_health_probe(compose_ctx, "mysql", "8080")
+        self.assertTrue(ok, str(detail))
+        self.assertEqual("my_panel", detail["admin_entry"])
+        self.assertEqual(200, detail["admin_entry_status"])
+
+        # 反例1：自定义入口 /my_panel/ 配置生效但默认 /admin/ 仍返回 200（未隐藏拦截）-> 必须失败
+        def http_legacy_exposed(url, **kwargs):
+            if url.endswith("/admin/"):
+                return 200, {"server": "nginx/1.26.2"}, b"<html>leaked admin</html>"
+            return http_custom_ok(url, **kwargs)
+
+        with patch.object(deploy, "run_subprocess", side_effect=fake_run_ok), \
+             patch.object(deploy, "http_get_response", side_effect=http_legacy_exposed):
+            ok, err = deploy.run_production_health_probe(compose_ctx, "mysql", "8080")
+        self.assertFalse(ok)
+        self.assertIn("/admin/", str(err))
+
+        # 反例2：runtime/admin_entry.txt 指定自定义入口但 /sec_gate/ 返回 404 -> 必须失败
+        (self.root / "runtime").mkdir(parents=True, exist_ok=True)
+        (self.root / "runtime/admin_entry.txt").write_text("sec_gate", encoding="utf-8")
+
+        def http_custom_missing(url, **kwargs):
+            if url.endswith("/api/index/ping"):
+                return 200, {"server": "nginx/1.26.2"}, b'{"code":1}'
+            if url.endswith("/adminapi/index/info"):
+                return 401, {"server": "nginx/1.26.2"}, b'{"code":401}'
+            return 404, {"server": "nginx/1.26.2"}, b"not found"
+
+        with patch.object(deploy, "run_subprocess", side_effect=fake_run_ok), \
+             patch.object(deploy, "http_get_response", side_effect=http_custom_missing):
+            ok, err = deploy.run_production_health_probe(compose_ctx, "mysql", "8080")
+        self.assertFalse(ok)
+        self.assertIn("/sec_gate/", str(err))
+
 
 if __name__ == "__main__":
     unittest.main()

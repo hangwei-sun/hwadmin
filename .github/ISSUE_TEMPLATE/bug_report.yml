@@ -1,0 +1,74 @@
+name: Bug 反馈 / Bug Report
+description: 报告可复现的程序缺陷或异常行为
+title: "[Bug]: "
+labels:
+  - bug
+  - triage
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈问题！请尽量提供准确的运行环境与复现步骤，**切勿粘贴任何数据库密码、API 密钥、Token 或真实服务器公私网 IP**。
+
+  - type: input
+    id: version
+    attributes:
+      label: HwAdmin 版本号
+      description: 可在 README.md 或 `server/config/hwadmin.php` 中查看
+      placeholder: 例如：v1.6.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: 运行与部署环境
+      multiple: true
+      options:
+        - Docker Compose (MySQL 8.0)
+        - Docker Compose (PostgreSQL 16)
+        - WSL + SQLite 本地开发
+        - 宝塔面板 / Nginx + PHP-FPM
+        - 移动端 (uni-app / 微信小程序)
+        - 桌面端 (Tauri 2 Windows)
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 请按顺序描述触发该问题的最小操作步骤
+      placeholder: |
+        1. 执行 '...'
+        2. 访问页面 '...'
+        3. 点击按钮 '...'
+        4. 出现异常
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: 预期行为与实际结果
+      description: 说明原本期望发生什么，以及实际发生了什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 报错日志 / 截图（请务必脱敏）
+      description: 粘贴关键错误栈或浏览器控制台报错（注意移除敏感凭据）
+      render: text
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前自查
+      options:
+        - label: 我已搜索现有 Issue，确认该问题尚未被报告
+          required: true
+        - label: 我已移除日志或截图中的密码、Token 与服务器敏感信息
+          required: true

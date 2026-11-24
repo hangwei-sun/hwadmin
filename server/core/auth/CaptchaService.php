@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace core\auth;
 
+use app\common\service\ConfigService;
 use think\facade\Cache;
 use think\facade\Db;
 
@@ -23,7 +24,9 @@ class CaptchaService
             if (!is_installed()) {
                 return false;
             }
-            $val = Db::name('config')->where('name', 'login_captcha')->value('value');
+            $val = class_exists(ConfigService::class)
+                ? ConfigService::get('login_captcha')
+                : Db::name('config')->where('name', 'login_captcha')->value('value');
             if ($val === null) {
                 return true; // 默认开启
             }
