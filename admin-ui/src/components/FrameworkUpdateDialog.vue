@@ -107,6 +107,7 @@ export interface FrameworkReleaseInfo {
   release_date?: string
   changelog: string[]
   download_url?: string
+  patch_sha256?: string
   min_php?: string
 }
 
@@ -129,7 +130,13 @@ const updateChannelLabel = computed(() =>
 const handleConfirm = async () => {
   updating.value = true
   try {
-    const res: any = await updateSystemFramework({ download_url: props.frameworkInfo.download_url })
+    const payload: { download_url?: string; patch_sha256?: string } = {
+      download_url: props.frameworkInfo.download_url,
+    }
+    if (props.frameworkInfo.patch_sha256) {
+      payload.patch_sha256 = props.frameworkInfo.patch_sha256
+    }
+    const res: any = await updateSystemFramework(payload)
     if (res?.code === 1) {
       ElMessage.success(res.msg || '框架升级成功，正在刷新页面...')
       emit('update:visible', false)

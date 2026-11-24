@@ -1181,7 +1181,11 @@ class Plugin extends AdminController
     {
         $this->requireSuperAdmin();
         $downloadUrl = trim((string) $this->request->post('download_url', ''));
-        $result = $this->updater->updateFramework($downloadUrl !== '' ? $downloadUrl : null);
+        $patchSha256 = trim((string) $this->request->post('patch_sha256', ''));
+        $result = $this->updater->updateFramework(
+            $downloadUrl !== '' ? $downloadUrl : null,
+            $patchSha256 !== '' ? $patchSha256 : null
+        );
         $this->success($result, $result['msg'] ?? '升级成功');
     }
 

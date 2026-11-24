@@ -25,7 +25,7 @@ use RecursiveIteratorIterator;
  */
 class SystemUpdater
 {
-    public const CURRENT_VERSION = '1.6.3';
+    public const CURRENT_VERSION = '1.6.4';
     public const CHANNEL_STABLE = 'stable';
     public const CHANNEL_BETA = 'beta';
     public const VALID_CHANNELS = [self::CHANNEL_STABLE, self::CHANNEL_BETA];
@@ -271,6 +271,7 @@ class SystemUpdater
             '5. 完善 Web 安装向导 SQLite 零配置极速安装选项',
         ];
         $releaseDate = $remoteCatalog['framework']['release_date'] ?? '2026-11-05';
+        $patchSha256 = strtolower(trim((string) ($remoteCatalog['framework']['patch_sha256'] ?? '')));
 
         // 计算框架下载地址
         $rawFrameworkUrl = $remoteCatalog['framework']['download_url'] ?? '';
@@ -386,6 +387,7 @@ class SystemUpdater
                 'release_date'    => $releaseDate,
                 'changelog'       => $frameworkChangelog,
                 'download_url'    => $downloadUrl,
+                'patch_sha256'    => $patchSha256,
                 'min_php'         => '8.1',
             ],
             'plugins'   => $pluginsUpdateMap,
@@ -396,12 +398,13 @@ class SystemUpdater
     /**
      * 执行框架平滑在线升级
      */
-    public function updateFramework(?string $packageUrl = null): array
+    public function updateFramework(?string $packageUrl = null, ?string $expectedSha256 = null): array
     {
         $packageUrl = $packageUrl !== null ? trim($packageUrl) : null;
         if ($packageUrl !== null && $packageUrl !== '') {
             $packageUrl = $this->assertTrustedFrameworkPackageUrl($packageUrl);
         }
+        $normalizedSha256 = self::normalizePatchSha256($expectedSha256);
 
         $currentVer = $this->getVersion();
         $targetVer = self::CURRENT_VERSION;
@@ -412,7 +415,7 @@ class SystemUpdater
 
         // 2. 若提供了远程下载包，执行下载与补丁解压覆盖
         if ($packageUrl !== null && $packageUrl !== '') {
-            $this->downloadAndApplyPatch($packageUrl);
+            $this->downloadAndApplyPatch($packageUrl, $normalizedSha256);
             $targetVer = self::resolvePatchedVersion($versionFile, $packageUrl, $targetVer);
         }
 
@@ -907,10 +910,48 @@ class SystemUpdater
     }
 
     /**
+     * 校验并规范化可选的补丁 SHA256 摘要（64 位十六进制）
+     */
+    public static function normalizePatchSha256(?string $sha256): ?string
+    {
+        if ($sha256 === null) {
+            return null;
+        }
+        $clean = strtolower(trim($sha256));
+        if ($clean === '') {
+            return null;
+        }
+        if (!preg_match('/^[a-f0-9]{64}$/', $clean)) {
+            throw new ApiException('非法的框架升级包 SHA256 校验格式');
+        }
+        return $clean;
+    }
+
+    /**
+     * 校验补丁文件 SHA256（若提供预期摘要）并执行安全解压应用
+     */
+    public function verifyAndApplyPatchArchive(string $zipPath, ?string $expectedSha256 = null): int
+    {
+        $normalizedSha256 = self::normalizePatchSha256($expectedSha256);
+        if ($normalizedSha256 !== null) {
+            if (!is_file($zipPath)) {
+                throw new ApiException('框架升级包文件不存在，无法执行 SHA256 校验');
+            }
+            $actualSha256 = strtolower((string) hash_file('sha256', $zipPath));
+            if (!hash_equals($normalizedSha256, $actualSha256)) {
+                throw new ApiException('框架升级包 SHA256 完整性校验失败，已中止更新');
+            }
+        }
+
+        return $this->applyPatchArchive($zipPath);
+    }
+
+    /**
      * 下载补丁并安全解压应用（保留站点环境配置、运行库与上传文件）
      */
-    protected function downloadAndApplyPatch(string $url): void
+    protected function downloadAndApplyPatch(string $url, ?string $expectedSha256 = null): void
     {
+        $normalizedSha256 = self::normalizePatchSha256($expectedSha256);
         $tmpFile = $this->runtimeBackupDir . 'patch_' . time() . '.zip';
         $siteDomain = $this->resolveSiteDomain();
         $headers = $siteDomain !== '' ? ['X-Site-Domain: ' . $siteDomain] : [];
@@ -927,7 +968,7 @@ class SystemUpdater
         }
 
         try {
-            $this->applyPatchArchive($tmpFile);
+            $this->verifyAndApplyPatchArchive($tmpFile, $normalizedSha256);
         } finally {
             @unlink($tmpFile);
         }
@@ -1007,6 +1048,9 @@ class SystemUpdater
                 throw new ApiException("写入升级文件失败：{$rel}");
             }
             @chmod($dest, 0644);
+            if (str_ends_with(strtolower($dest), '.php') && function_exists('opcache_invalidate')) {
+                @opcache_invalidate($dest, true);
+            }
             $applied++;
         }
 

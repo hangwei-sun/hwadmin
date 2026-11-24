@@ -1,3 +1,13 @@
+## [1.6.4] - 2026-11-24
+
+### OTA 热更新加固（P2）
+- **热更新覆写后逐文件 OPcache 失效**：
+  - [SystemUpdater.php](../server/core/plugin/SystemUpdater.php)：`applyPatchArchive()` 在每次成功覆写 `.php` 文件后立即调用 `@opcache_invalidate($dest, true)`，消除高并发热更新瞬态 OPcache 脏缓存。
+- **下载补丁包可选 SHA256 完整性验签 (`patch_sha256`)**：
+  - [SystemUpdater.php](../server/core/plugin/SystemUpdater.php)、[Plugin.php](../server/app/adminapi/controller/system/Plugin.php)、[hwadmin.ts](../admin-ui/src/api/hwadmin.ts) 与 [FrameworkUpdateDialog.vue](../admin-ui/src/components/FrameworkUpdateDialog.vue)：`checkUpdates()` 透传 `framework.patch_sha256`，`updateFramework()` / `downloadAndApplyPatch()` 支持可选 64 位 SHA256 验签，校验失败立即删除临时文件并中止覆盖；
+  - [OtaChannelAndDependencyGuardTest.php](../server/tests/Unit/OtaChannelAndDependencyGuardTest.php)：新增正反例 PHPUnit 单元测试覆盖合法 SHA256 放行、错误 SHA256 中止与非法格式拦截。
+- **版本号判定**：本次为 OTA 热更新 OPcache 失效与补丁 SHA256 验签加固，无数据库表结构或破坏性接口变更，按 patch 从 `1.6.3` 升级至 `1.6.4`。
+
 ## [1.6.3] - 2026-11-24
 
 ### 更新通道与 OTA 安全防线（Beta 内测）

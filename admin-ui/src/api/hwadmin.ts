@@ -648,7 +648,7 @@ export const setSystemUpdateChannel = (data: { channel: 'stable' | 'beta' }) => 
   })
 }
 
-export const updateSystemFramework = (data?: { download_url?: string }) => {
+export const updateSystemFramework = (data?: { download_url?: string; patch_sha256?: string }) => {
   return request({
     url: `${API_BASE}/system.plugin/updateFramework`,
     method: 'post',

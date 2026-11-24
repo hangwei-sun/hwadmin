@@ -23,17 +23,17 @@
 
 # HwAdmin
 
-**让你的 AI 智能体读懂，并快速创造应用。** 当前源码版本 **1.6.3**。
+**让你的 AI 智能体读懂，并快速创造应用。** 当前源码版本 **1.6.4**。
 
 把统一完整发行包解压到工作区或服务器，告诉智能体想做什么即可开发与上线。网站、管理后台、小程序的环境准备、业务开发和上线配置，由 Agent 处理。
 
 - 🌐 **官网与插件市场**：[https://hwadmin.cn](https://hwadmin.cn)（在线文档、官方插件生态与版本动态）
-- 📦 **发行包下载**：[GitHub Releases](https://github.com/hangwei-sun/hwadmin/releases)（下载 `hwadmin-v1.6.3.zip` 或最新 Tag 发行包与 `.sha256` 校验文件）
+- 📦 **发行包下载**：[GitHub Releases](https://github.com/hangwei-sun/hwadmin/releases)（下载 `hwadmin-v1.6.4.zip` 或最新 Tag 发行包与 `.sha256` 校验文件）
 - ⚡ **本地 10 秒体验**：解压发行包执行 `./hw start website`（或运行下方 `docker compose up -d`），按 [START_HERE.md](START_HERE.md) 立即开启可视预览
 
 ## 你只需要这样开始
 
-下载统一完整包 `hwadmin-v1.6.3.zip`，解压后把下面这句话发给你的 Agent：
+下载统一完整包 `hwadmin-v1.6.4.zip`，解压后把下面这句话发给你的 Agent：
 
 > 先阅读 START_HERE.md，帮我做一个【你的业务目标】。先做出可以预览的版本，页面和功能确认后，再帮我部署上线。
 

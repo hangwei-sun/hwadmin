@@ -120,6 +120,7 @@ final class OtaChannelAndDependencyGuardTest extends TestCase
                             'release_date'    => '2026-11-24',
                             'changelog'       => ['Beta 内测特性验证'],
                             'download_url'    => '/api/plugin/market/gateway/downloadFramework?version=9.9.9-beta.1',
+                            'patch_sha256'    => str_repeat('a', 64),
                         ],
                         'list' => [],
                     ];
@@ -150,6 +151,7 @@ final class OtaChannelAndDependencyGuardTest extends TestCase
             $this->assertStringContainsString('channel=beta', $fwBeta['download_url']);
             $this->assertStringContainsString('site_domain=beta.example.com', $fwBeta['download_url']);
             $this->assertStringContainsString('version=9.9.9-beta.1', $fwBeta['download_url']);
+            $this->assertSame(str_repeat('a', 64), $fwBeta['patch_sha256']);
 
             $lastCall = end($updater->capturedGatewayCalls);
             $this->assertSame('beta', $lastCall['channel']);
@@ -264,6 +266,79 @@ final class OtaChannelAndDependencyGuardTest extends TestCase
         } finally {
             ConfigService::clearCache();
             DictService::clearCache();
+        }
+    }
+
+    public function testPatchSha256VerificationPassesOnMatchAndAbortsOnMismatchOrInvalidFormat(): void
+    {
+        $tmpRoot = sys_get_temp_dir() . '/hwadmin_ota_sha256_' . bin2hex(random_bytes(6));
+        $targetRel = 'core/support/OtaSha256Probe.php';
+        $targetFile = $tmpRoot . '/' . $targetRel;
+        $zipPath = $tmpRoot . '/patch_test.zip';
+        @mkdir(dirname($targetFile), 0755, true);
+        @mkdir($tmpRoot . '/runtime/backups', 0755, true);
+
+        $originalContent = "<?php\nreturn 'v1';\n";
+        $patchedContent = "<?php\nreturn 'v2';\n";
+        file_put_contents($targetFile, $originalContent);
+
+        $zip = new \ZipArchive();
+        $this->assertTrue($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === true);
+        $zip->addFromString($targetRel, $patchedContent);
+        $zip->close();
+
+        $validSha256 = strtolower((string) hash_file('sha256', $zipPath));
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $validSha256);
+
+        $isolatedApp = new class($tmpRoot) extends \think\App {
+            public function __construct(string $rootPath)
+            {
+                parent::__construct($rootPath);
+            }
+        };
+        $updater = new SystemUpdater($isolatedApp);
+
+        try {
+            // 反例 1：非法格式 SHA256 必须被直接拦截
+            foreach (['short-hash', str_repeat('g', 64), str_repeat('a', 63), 'not a sha256!'] as $invalidHash) {
+                try {
+                    $updater->verifyAndApplyPatchArchive($zipPath, $invalidHash);
+                    $this->fail("非法 SHA256 [{$invalidHash}] 必须被拦截");
+                } catch (ApiException $e) {
+                    $this->assertStringContainsString('SHA256', $e->getMessage());
+                }
+                $this->assertSame($originalContent, file_get_contents($targetFile));
+            }
+
+            try {
+                $updater->updateFramework('https://hw.baotoutv.cn/api/plugin/market/gateway/downloadFramework', 'invalid-sha256');
+                $this->fail('updateFramework 传入非法 SHA256 必须被拦截');
+            } catch (ApiException $e) {
+                $this->assertStringContainsString('SHA256', $e->getMessage());
+            }
+
+            // 反例 2：错误 SHA256 校验失败，抛出指定 ApiException 且不破坏原文件
+            $wrongSha256 = $validSha256 === str_repeat('0', 64) ? str_repeat('1', 64) : str_repeat('0', 64);
+            try {
+                $updater->verifyAndApplyPatchArchive($zipPath, $wrongSha256);
+                $this->fail('错误 SHA256 必须中止更新并抛出 ApiException');
+            } catch (ApiException $e) {
+                $this->assertStringContainsString('框架升级包 SHA256 完整性校验失败，已中止更新', $e->getMessage());
+            }
+            $this->assertSame($originalContent, file_get_contents($targetFile));
+
+            // 正例：SHA256 匹配（含大写兼容）校验通过，applyPatchArchive 正常覆写 PHP 文件
+            $applied = $updater->verifyAndApplyPatchArchive($zipPath, strtoupper($validSha256));
+            $this->assertSame(1, $applied);
+            $this->assertSame($patchedContent, file_get_contents($targetFile));
+        } finally {
+            @unlink($zipPath);
+            @unlink($targetFile);
+            @rmdir(dirname($targetFile));
+            @rmdir($tmpRoot . '/core');
+            @rmdir($tmpRoot . '/runtime/backups');
+            @rmdir($tmpRoot . '/runtime');
+            @rmdir($tmpRoot);
         }
     }
 
