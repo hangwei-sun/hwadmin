@@ -1,0 +1,250 @@
+# ==============================================================================
+# HwAdmin 容器化生产编排环境 (Docker Compose)
+# 包含：Nginx + PHP-FPM 8.3 + MySQL 8.0 (--profile mysql) / PostgreSQL 16 (--profile pgsql) + Redis 7 + 分离式初始化作业
+# 多目录天然隔离：不写死 container_name，支持多实例通过 COMPOSE_PROJECT_NAME + HTTP_PORT 并行启动不冲突
+# ==============================================================================
+
+services:
+  # 1. Web 服务器 (Nginx)
+  hwadmin-nginx:
+    image: nginx:1.26-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    volumes:
+      - ./:/var/www/hwadmin
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - hwadmin-php
+    networks:
+      - hwadmin-net
+
+  # 2. PHP 8.3 应用运行时（按当前激活的数据库 profile 自动对接对应初始化作业）
+  hwadmin-php:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    working_dir: /var/www/hwadmin/server
+    volumes:
+      - ./:/var/www/hwadmin
+    environment:
+      APP_DEBUG: "${APP_DEBUG:-false}"
+      DB_DRIVER: "${DB_DRIVER:-mysql}"
+      DB_TYPE: "${DB_TYPE:-${DB_DRIVER:-mysql}}"
+      DB_HOST: "${DB_HOST:-hwadmin-mysql}"
+      DB_PORT: "${DB_PORT:-3306}"
+      DB_NAME: "${DB_NAME:-hwadmin}"
+      DB_USER: "${DB_USER:-hwadmin_app}"
+      DB_PASS: "${DB_PASS:?请先在 .env 中配置高强度 DB_PASS（参考 .env.docker.example）}"
+      DB_PREFIX: "${DB_PREFIX:-hw_}"
+      CACHE_DRIVER: "${CACHE_DRIVER:-redis}"
+      REDIS_HOST: "${REDIS_HOST:-hwadmin-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?请先在 .env 中配置高强度 REDIS_PASSWORD（参考 .env.docker.example）}"
+      REDIS_PASS: "${REDIS_PASSWORD:?请先在 .env 中配置高强度 REDIS_PASSWORD（参考 .env.docker.example）}"
+    command:
+      - sh
+      - -c
+      - |
+        if php -r 'exit(getenv("DB_DRIVER") === "mysql" && gethostbyname("hwadmin-mysql") === "hwadmin-mysql" && gethostbyname("hwadmin-pg") !== "hwadmin-pg" ? 0 : 1);'; then
+          export DB_DRIVER=pgsql DB_TYPE=pgsql DB_HOST=hwadmin-pg DB_PORT=5432
+        fi
+        exec php-fpm
+    depends_on:
+      hwadmin-redis:
+        condition: service_healthy
+      hwadmin-mysql:
+        condition: service_healthy
+        required: false
+      hwadmin-init-mysql:
+        condition: service_completed_successfully
+        required: false
+      hwadmin-pg:
+        condition: service_healthy
+        required: false
+      hwadmin-init-pg:
+        condition: service_completed_successfully
+        required: false
+    networks:
+      hwadmin-net:
+        aliases:
+          - hwadmin-php
+
+  # 3. 主推数据库：MySQL 8.0（归属 mysql profile，避免 pgsql 模式隐性拉起）
+  hwadmin-mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    profiles: ["mysql", "all"]
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:-${DB_PASS:?请先在 .env 中配置高强度 DB_PASS（参考 .env.docker.example）}}"
+      MYSQL_DATABASE: "${DB_NAME:-hwadmin}"
+      MYSQL_USER: "${DB_USER:-hwadmin_app}"
+      MYSQL_PASSWORD: "${DB_PASS:?请先在 .env 中配置高强度 DB_PASS（参考 .env.docker.example）}"
+      TZ: "Asia/Shanghai"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$$MYSQL_ROOT_PASSWORD\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      hwadmin-net:
+        aliases:
+          - hwadmin-mysql
+
+  # 4. 备选双栈数据库：PostgreSQL 16（归属 pgsql profile，零 MySQL 依赖）
+  hwadmin-pg:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    profiles: ["pgsql", "all"]
+    environment:
+      POSTGRES_DB: "${DB_NAME:-hwadmin}"
+      POSTGRES_USER: "${PG_USER:-${DB_USER:-hwadmin_app}}"
+      POSTGRES_PASSWORD: "${DB_PASS:?请先在 .env 中配置高强度 DB_PASS（参考 .env.docker.example）}"
+      TZ: "Asia/Shanghai"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER:-hwadmin_app}\" -d \"$${POSTGRES_DB:-hwadmin}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      hwadmin-net:
+        aliases:
+          - hwadmin-pg
+          - hwadmin-postgres
+
+  # 5. 高速缓存服务：Redis 7（注入 REDIS_PASSWORD 与 healthcheck 对齐）
+  hwadmin-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?请先在 .env 中配置高强度 REDIS_PASSWORD（参考 .env.docker.example）}"
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      hwadmin-net:
+        aliases:
+          - hwadmin-redis
+
+  # 6A. MySQL 受控单次迁移与初始化作业（仅 mysql profile 激活）
+  hwadmin-init-mysql:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    restart: "no"
+    profiles: ["mysql", "all"]
+    working_dir: /var/www/hwadmin/server
+    volumes:
+      - ./:/var/www/hwadmin
+    environment:
+      APP_DEBUG: "false"
+      DB_DRIVER: "mysql"
+      DB_TYPE: "mysql"
+      DB_HOST: "hwadmin-mysql"
+      DB_PORT: "3306"
+      DB_NAME: "${DB_NAME:-hwadmin}"
+      DB_USER: "${DB_USER:-hwadmin_app}"
+      DB_PASS: "${DB_PASS:?请先在 .env 中配置高强度 DB_PASS（参考 .env.docker.example）}"
+      DB_PREFIX: "${DB_PREFIX:-hw_}"
+      CACHE_DRIVER: "${CACHE_DRIVER:-redis}"
+      REDIS_HOST: "${REDIS_HOST:-hwadmin-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?请先在 .env 中配置高强度 REDIS_PASSWORD（参考 .env.docker.example）}"
+      REDIS_PASS: "${REDIS_PASSWORD:?请先在 .env 中配置高强度 REDIS_PASSWORD（参考 .env.docker.example）}"
+      ADMIN_INIT_USER: "${ADMIN_INIT_USER:-admin}"
+      ADMIN_INIT_PASSWORD: "${ADMIN_INIT_PASSWORD:-}"
+    depends_on:
+      hwadmin-mysql:
+        condition: service_healthy
+      hwadmin-redis:
+        condition: service_healthy
+    networks:
+      - hwadmin-net
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        INIT_PASS="$${ADMIN_INIT_PASSWORD:-}"
+        if [ ! -f config/install.lock ] && [ -z "$$INIT_PASS" ]; then
+          INIT_PASS="$$(php -r 'echo bin2hex(random_bytes(12)) . "!Aa1";')"
+          mkdir -p runtime
+          printf "username=%s\npassword=%s\n" "$${ADMIN_INIT_USER:-admin}" "$$INIT_PASS" > runtime/docker-init-admin.txt
+          chmod 600 runtime/docker-init-admin.txt
+        fi
+        php think hw:install --username="$${ADMIN_INIT_USER:-admin}" --password="$${INIT_PASS:-}" --skip-if-installed
+        php think migrate:run
+        php think hw:menu:sync
+
+  # 6B. PostgreSQL 受控单次迁移与初始化作业（仅 pgsql profile 激活，自动注入 PG 连接参数，零 MySQL 依赖）
+  hwadmin-init-pg:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    restart: "no"
+    profiles: ["pgsql", "all"]
+    working_dir: /var/www/hwadmin/server
+    volumes:
+      - ./:/var/www/hwadmin
+    environment:
+      APP_DEBUG: "false"
+      DB_DRIVER: "pgsql"
+      DB_TYPE: "pgsql"
+      DB_HOST: "hwadmin-pg"
+      DB_PORT: "5432"
+      DB_NAME: "${DB_NAME:-hwadmin}"
+      DB_USER: "${PG_USER:-${DB_USER:-hwadmin_app}}"
+      DB_PASS: "${DB_PASS:?请先在 .env 中配置高强度 DB_PASS（参考 .env.docker.example）}"
+      DB_PREFIX: "${DB_PREFIX:-hw_}"
+      CACHE_DRIVER: "${CACHE_DRIVER:-redis}"
+      REDIS_HOST: "${REDIS_HOST:-hwadmin-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?请先在 .env 中配置高强度 REDIS_PASSWORD（参考 .env.docker.example）}"
+      REDIS_PASS: "${REDIS_PASSWORD:?请先在 .env 中配置高强度 REDIS_PASSWORD（参考 .env.docker.example）}"
+      ADMIN_INIT_USER: "${ADMIN_INIT_USER:-admin}"
+      ADMIN_INIT_PASSWORD: "${ADMIN_INIT_PASSWORD:-}"
+    depends_on:
+      hwadmin-pg:
+        condition: service_healthy
+      hwadmin-redis:
+        condition: service_healthy
+    networks:
+      - hwadmin-net
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        INIT_PASS="$${ADMIN_INIT_PASSWORD:-}"
+        if [ ! -f config/install.lock ] && [ -z "$$INIT_PASS" ]; then
+          INIT_PASS="$$(php -r 'echo bin2hex(random_bytes(12)) . "!Aa1";')"
+          mkdir -p runtime
+          printf "username=%s\npassword=%s\n" "$${ADMIN_INIT_USER:-admin}" "$$INIT_PASS" > runtime/docker-init-admin.txt
+          chmod 600 runtime/docker-init-admin.txt
+        fi
+        php think hw:install --username="$${ADMIN_INIT_USER:-admin}" --password="$${INIT_PASS:-}" --skip-if-installed
+        php think migrate:run
+        php think hw:menu:sync
+
+networks:
+  hwadmin-net:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  pg_data:
+  redis_data:

@@ -1,0 +1,15 @@
+DirectoryIndex index.html
+<IfModule mod_headers.c>
+    <Files "hwadmin.config.js">
+        Header set Cache-Control "no-store"
+    </Files>
+</IfModule>
+RewriteEngine On
+
+# Preserve compiled assets and the entry file.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# 此文件放在前端 /admin/ 目录，处理 Vue hash/history 路由。
+RewriteRule ^ index.html [L]

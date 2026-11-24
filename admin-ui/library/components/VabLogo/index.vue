@@ -1,0 +1,149 @@
+<template>
+  <div
+    class="vab-logo"
+    :class="{
+      ['vab-logo-' + theme.layout]: true,
+    }"
+  >
+    <router-link to="/">
+      <span class="logo">
+        <img v-if="isImageLogo" :src="resolveUrl(logo)" class="logo-img" alt="logo" />
+        <vab-icon v-else-if="logo" :icon="logo" is-custom-svg />
+      </span>
+      <span class="title" :class="{ 'hidden-xs-only': theme.layout === 'horizontal' }">
+        {{ title }}
+      </span>
+    </router-link>
+  </div>
+</template>
+
+<script lang="ts" setup>
+import { computed } from 'vue'
+import { useSettingsStore } from '/@/store/modules/settings'
+
+defineOptions({
+  name: 'VabLogo',
+})
+
+const settingsStore = useSettingsStore()
+const { theme, logo, title } = storeToRefs(settingsStore)
+
+const isImageLogo = computed(() => {
+  if (!logo.value) return false
+  return (
+    logo.value.startsWith('http://') ||
+    logo.value.startsWith('https://') ||
+    logo.value.startsWith('/') ||
+    logo.value.startsWith('data:')
+  )
+})
+
+const resolveUrl = (url: string) => {
+  if (!url) return ''
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:') || url.startsWith('blob:')) {
+    return url
+  }
+  return url.startsWith('/') ? url : `/${url}`
+}
+</script>
+
+<style lang="scss" scoped>
+@mixin container {
+  position: relative;
+  height: var(--el-header-height);
+  overflow: hidden;
+  line-height: var(--el-header-height);
+  background: transparent;
+}
+
+@mixin logo {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  vertical-align: middle;
+  color: var(--el-title-color);
+  fill: currentColor;
+}
+
+@mixin title {
+  display: inline-block;
+  margin-left: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--el-font-size-extra-large);
+  line-height: var(--el-nav-height);
+  vertical-align: middle;
+  color: var(--el-title-color);
+  white-space: nowrap;
+}
+
+.vab-logo {
+  &-horizontal {
+    @include container;
+
+    .logo {
+      svg,
+      img {
+        @include logo;
+      }
+    }
+
+    .title {
+      @include title;
+    }
+  }
+
+  &-vertical,
+  &-double,
+  &-column,
+  &-comprehensive,
+  &-fall {
+    @include container;
+
+    height: var(--el-logo-height);
+    line-height: var(--el-logo-height);
+    text-align: center;
+
+    .logo {
+      svg,
+      img {
+        @include logo;
+      }
+    }
+
+    .title {
+      @include title;
+      max-width: calc(var(--el-left-menu-width) - 60);
+    }
+  }
+
+  &-column {
+    background: var(--el-color-white) !important;
+
+    .logo {
+      position: fixed;
+      top: 0;
+      display: block;
+      width: var(--el-left-menu-width-min);
+      height: var(--el-logo-height);
+      margin: 0;
+      background: var(--el-menu-background-color);
+    }
+
+    .title {
+      position: fixed;
+      left: var(--el-left-menu-width-min) !important;
+      box-sizing: border-box;
+      display: block !important;
+      width: calc(var(--el-left-menu-width) - var(--el-left-menu-width-min) - 1px);
+      height: var(--el-nav-height);
+      margin-left: 0 !important;
+      color: var(--el-color-grey) !important;
+      background: var(--el-color-white) !important;
+      border-bottom: 1px solid var(--el-border-color);
+
+      @include title;
+    }
+  }
+}
+</style>

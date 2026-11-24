@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <script>
+    // 若用户通过旧书签访问了根路径带后台 Hash 路由（如 /#/login），自动修正跳转到标准后台路径 /admin/#/login
+    if (window.location.hash && window.location.hash.indexOf('#/') === 0 && window.location.pathname.indexOf('/admin') !== 0) {
+      window.location.replace('/admin/' + window.location.hash);
+    }
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{site_name}} - 让你的 AI 智能体读懂并快速创造应用</title>
+  <meta name="description" content="{{site_description}}">
+  <link rel="icon" href="{{site_favicon}}">
+  <style>
+    :root {
+      --bg-main: #090d16;
+      --bg-card: rgba(255, 255, 255, 0.03);
+      --bg-card-hover: rgba(255, 255, 255, 0.07);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-glow: rgba(56, 189, 248, 0.3);
+      --primary: #38bdf8;
+      --primary-gradient: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-green: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+    /* 背景极光渐变光晕 */
+    .aurora-bg {
+      position: fixed;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 1000px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.15) 0%, rgba(99, 102, 241, 0.12) 40%, transparent 70%);
+      filter: blur(80px);
+      z-index: 0;
+      pointer-events: none;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+      width: 100%;
+      position: relative;
+      z-index: 1;
+    }
+    /* 顶部导航 */
+    header {
+      padding: 24px 0;
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .nav-wrap {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text-main);
+    }
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.96);
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 18px;
+      color: #0f172a;
+      box-shadow: 0 2px 12px rgba(56, 189, 248, 0.25);
+    }
+    .brand-logo img {
+      width: 100%;
+      height: 100%;
+      border-radius: 6px;
+      object-fit: contain;
+    }
+    .brand-name {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: var(--primary-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      border-radius: 9999px;
+      font-size: 13px;
+      color: #34d399;
+      font-weight: 500;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--accent-green);
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+    /* Hero 区域 */
+    .hero {
+      padding: 80px 0 60px;
+      text-align: center;
+    }
+    .hero-badge {
+      display: inline-block;
+      padding: 6px 16px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 20px;
+      color: var(--primary);
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+    .hero-title {
+      font-size: clamp(36px, 5vw, 60px);
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1.15;
+      margin-bottom: 20px;
+    }
+    .hero-title span {
+      background: var(--primary-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-desc {
+      font-size: clamp(16px, 2vw, 20px);
+      color: var(--text-muted);
+      max-width: 720px;
+      margin: 0 auto 36px;
+    }
+    .hero-actions {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 28px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--primary-gradient);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(56, 189, 248, 0.3);
+    }
+    .btn-primary:hover {
+      box-shadow: 0 6px 28px rgba(56, 189, 248, 0.5);
+      transform: translateY(-2px);
+    }
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      background: var(--bg-card-hover);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+    /* 特性矩阵网格 */
+    .features {
+      padding: 60px 0;
+    }
+    .section-title {
+      text-align: center;
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 40px;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+    }
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px 24px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .feature-card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-glow);
+      transform: translateY(-4px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+    }
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: rgba(56, 189, 248, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      margin-bottom: 20px;
+      color: var(--primary);
+    }
+    .feature-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .feature-text {
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    /* 文档与生态 */
+    .docs-section {
+      padding: 60px 0 80px;
+    }
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .doc-item {
+      display: block;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.2s ease;
+    }
+    .doc-item:hover {
+      border-color: var(--primary);
+      background: var(--bg-card-hover);
+      transform: translateY(-2px);
+    }
+    .doc-item-title {
+      font-weight: 600;
+      font-size: 16px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .doc-item-desc {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    /* 页脚 */
+    footer {
+      margin-top: auto;
+      border-top: 1px solid var(--border);
+      padding: 32px 0;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover {
+      color: var(--text-main);
+    }
+  </style>
+</head>
+<body>
+  <div class="aurora-bg"></div>
+
+  <!-- 顶部导航栏 -->
+  <header>
+    <div class="container nav-wrap">
+      <a href="/" class="brand">
+        <div class="brand-logo">
+          {{site_logo_render}}
+        </div>
+        <span class="brand-name">{{site_name}}</span>
+      </a>
+      <div class="status-badge">
+        <span class="pulse-dot"></span>
+        <span>运行正常 · v1.6.1</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主视觉区 -->
+  <main class="container">
+    <section class="hero">
+      <div class="hero-badge">🤖 AI-Native 全栈框架 · ThinkPHP 8.1 + Vue 3 + uni-app</div>
+      <h1 class="hero-title">
+        让你的 AI 智能体<br>
+        <span>读懂并快速创造应用</span>
+      </h1>
+      <p class="hero-desc">
+        {{site_description}}
+      </p>
+      <div class="hero-actions">
+        <a href="#features" class="btn btn-primary">探索架构特性</a>
+        <a href="#ecosystem" class="btn btn-secondary">生态开发体系</a>
+        <!-- @hw-page-nav-start -->
+        <!-- @hw-page-nav-end -->
+      </div>
+    </section>
+
+    <!-- 特性矩阵网格 -->
+    <section id="features" class="features">
+      <h2 class="section-title">全栈工程化特性矩阵</h2>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🗄️</div>
+          <h3 class="feature-title">双数据库引擎原生兼容</h3>
+          <p class="feature-text">
+            针对 MySQL 8.0+ 与 PostgreSQL 16+ 深度适配，全量数据迁移脚本自动化处理方言差异与标识符规范，零手动修改无缝切换。
+          </p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🧩</div>
+          <h3 class="feature-title">零侵入可插拔插件架构</h3>
+          <p class="feature-text">
+            插件拥有独立生命周期、数据迁移、路由调度与专属静态资源自动发布器，物理目录隔离保障核心系统稳定纯净。
+          </p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🚀</div>
+          <h3 class="feature-title">极速 CRUD 智能代码生成</h3>
+          <p class="feature-text">
+            基于数据库元数据一键生成高标准控制器、模型、验证器与权限节点，默认内置归属隔离、密码哈希与机密字段防护基线。
+          </p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🛡️</div>
+          <h3 class="feature-title">企业级高等级安全防御</h3>
+          <p class="feature-text">
+            默认内置防时序攻击虚拟验证、多维度登录限流、SVG矢量图形验证码与后台安全入口动态混淆拦截机制，杜绝爆破与越权。
+          </p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">✨</div>
+          <h3 class="feature-title">现代化前端交互体验</h3>
+          <p class="feature-text">
+            生产级 Vue 3 + Vite + TypeScript + Pinia 管理端，细粒度权限指令、暗黑模式切换与高性能响应式数据表格开箱即用。
+          </p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🌐</div>
+          <h3 class="feature-title">灵活的多模板与首页接管</h3>
+          <p class="feature-text">
+            支持品牌展示门户、CMS 内容管理门户与自定义业务插件无缝接管根域名，完全隐蔽管理后台地址，兼顾品牌展示与系统安全。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 生态与文档 -->
+    <section id="ecosystem" class="docs-section">
+      <h2 class="section-title">生态与快速接入</h2>
+      <div class="docs-grid">
+        <div class="doc-item">
+          <div class="doc-item-title">
+            <span>RESTful 接口契约</span>
+            <span>→</span>
+          </div>
+          <p class="doc-item-desc">标准化 QueryParams 协议、统一数据响应码规范与全局异常拦截机制。</p>
+        </div>
+        <div class="doc-item">
+          <div class="doc-item-title">
+            <span>插件开发全流程</span>
+            <span>→</span>
+          </div>
+          <p class="doc-item-desc">学习遵循 plugin.json 规范开发可分发扩展包并实现前后端自动化联动。</p>
+        </div>
+        <div class="doc-item">
+          <div class="doc-item-title">
+            <span>生产容器化编排</span>
+            <span>→</span>
+          </div>
+          <p class="doc-item-desc">Docker Compose 多栈隔离部署：Nginx + PHP 8.3 + Redis 7 + MySQL/PG。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 页脚 -->
+  <footer>
+    <div class="container">
+      <div class="footer-links">
+        <a href="#features">架构特性</a>
+        <a href="#ecosystem">开发文档</a>
+        <a href="#">服务条款</a>
+        <a href="#">安全合规</a>
+      </div>
+      <div>{{site_copyright}}</div>
+      <div v-if="{{beian}}" style="margin-top: 6px; font-size: 13px;">
+        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" style="color: var(--text-muted); text-decoration: none;">
+          {{beian}}
+        </a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,96 @@
+# ===== 依赖与构建产物 =====
+node_modules/
+admin-ui/node_modules/
+admin-ui/dist/
+admin-ui/dist-desktop/
+admin-ui/src-tauri/target/
+admin-ui/src-tauri/gen/
+admin-ui/.vite/
+server/vendor/
+server/public/admin/
+server/public/plugins/
+
+# ===== 仅限本地参考的前端模板备份（禁止提交 GitHub，线上仅保留 admin-ui） =====
+Vite-vue/
+
+# ===== 前端冗余上游教程与离线文档 =====
+admin-ui/docs-local/
+admin-ui/docs/
+
+# ===== 作者私人研发笔记与内部维护文档（与公开 docs/ 严格隔离，禁止提交与打包） =====
+private-docs/
+brand-kit/
+
+# ===== 环境与敏感配置 =====
+.env
+.env.local
+.env.*.local
+server/.env
+server/.env.*
+server/.env-*
+!.env.docker.example
+!server/.example.env
+!server/.env.dev.sqlite.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# ===== 运行时数据 =====
+.hw-state/
+runtime/
+server/public/storage/
+server/runtime/
+server/public/uploads/*
+!server/public/uploads/.htaccess
+!server/public/uploads/.gitkeep
+server/config/install.lock
+server/config/install.lock.*
+server/config/install.token
+server/config/install.token.*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+dev.sqlite
+*.sql
+!server/plugins/*/install.sql
+!server/plugins/*/uninstall.sql
+*.bak
+*.dump
+*.log
+logs/
+
+# ===== 发布产物（可由 scripts/build-release.py 重新生成） =====
+release/
+backup/
+hwadmin-release-v*.zip
+*.sha256
+
+# ===== 团队隔离工作副本（测试/试跑用，不入库） =====
+.qa-iso/
+.tmp-iso/
+*-iso/
+
+# ===== 缓存 =====
+__pycache__/
+*.pyc
+.cache/
+.temp/
+tmp/
+
+# ===== 编辑器与系统 =====
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+.playwright-cli/
+.agent/
+
+.alma-snapshots
+
+# 部署凭据，禁止提交
+PROJECT_SECRETS.md

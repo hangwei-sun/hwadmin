@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta content="IE=edge" http-equiv="X-UA-Compatible" />
+    <meta content="webkit" name="renderer" />
+    <meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport" />
+    <meta content="no-cache, no-store, must-revalidate" http-equiv="Cache-Control" />
+    <link href="./favicon.ico" rel="icon" sizes="any" />
+    <link href="./favicon.svg" rel="icon" type="image/svg+xml" />
+    <link href="./apple-touch-icon-180x180.png" rel="apple-touch-icon" />
+    <title>HwAdmin</title>
+    <meta content="HwAdmin 是基于 Vue、Vite 与 Element Plus 的后台管理系统。" name="description" />
+    <link href="./static/css/loading.css" rel="stylesheet" />
+    <script type="speculationrules">
+      {
+        "prerender": [{ "source": "document", "eagerness": "moderate" }]
+      }
+    </script>
+  </head>
+
+  <body>
+    <noscript>HwAdmin 需要启用 JavaScript 才能使用。</noscript>
+    <div id="app">
+      <div class="hw-loading-splash" role="status" aria-label="HwAdmin 正在加载">
+        <img class="hw-loading-img" src="./brand/loading-screen.webp" alt="HwAdmin 正在加载，请稍候..." />
+      </div>
+    </div>
+    <script src="./hwadmin.config.js"></script>
+    <script src="/src/main.ts" type="module"></script>
+  </body>
+</html>

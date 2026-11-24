@@ -1,0 +1,214 @@
+{
+  "name": "cms",
+  "title": "内容管理",
+  "version": "2.1.5",
+  "description": "HwAdmin 官方企业级内容管理与多套标准门户系统，内置个人博客、企业品牌官网、购物产品展示三套通用响应式模板与询价互动",
+  "author": "HwAdmin Team",
+  "require": {
+    "hwadmin": ">=0.1.0",
+    "php": ">=8.2"
+  },
+  "menus": [
+    {
+      "type": "dir",
+      "title": "内容",
+      "name": "plugin/cms/group",
+      "icon": "article-line",
+      "path": "cms",
+      "weight": 90,
+      "children": [
+        {
+          "type": "menu",
+          "title": "主题与配置",
+          "name": "plugin/cms/setting",
+          "icon": "palette-line",
+          "path": "setting",
+          "component": "@/views/plugin/cms/setting/index.vue",
+          "weight": 100,
+          "children": [
+            {
+              "type": "button",
+              "title": "查看配置",
+              "name": "plugin/cms/setting/index"
+            },
+            {
+              "type": "button",
+              "title": "保存配置",
+              "name": "plugin/cms/setting/save"
+            }
+          ]
+        },
+        {
+          "type": "menu",
+          "title": "内容与产品",
+          "name": "plugin/cms/article",
+          "icon": "file-list-3-line",
+          "path": "article",
+          "component": "@/views/plugin/cms/article/index.vue",
+          "weight": 90,
+          "children": [
+            {
+              "type": "button",
+              "title": "查看内容",
+              "name": "plugin/cms/article/index"
+            },
+            {
+              "type": "button",
+              "title": "内容详情",
+              "name": "plugin/cms/article/read"
+            },
+            {
+              "type": "button",
+              "title": "添加内容",
+              "name": "plugin/cms/article/add"
+            },
+            {
+              "type": "button",
+              "title": "编辑内容",
+              "name": "plugin/cms/article/edit"
+            },
+            {
+              "type": "button",
+              "title": "删除内容",
+              "name": "plugin/cms/article/del"
+            }
+          ]
+        },
+        {
+          "type": "menu",
+          "title": "栏目分类",
+          "name": "plugin/cms/category",
+          "icon": "folder-line",
+          "path": "category",
+          "component": "@/views/plugin/cms/category/index.vue",
+          "weight": 80,
+          "children": [
+            {
+              "type": "button",
+              "title": "查看分类",
+              "name": "plugin/cms/category/index"
+            },
+            {
+              "type": "button",
+              "title": "分类详情",
+              "name": "plugin/cms/category/read"
+            },
+            {
+              "type": "button",
+              "title": "添加分类",
+              "name": "plugin/cms/category/add"
+            },
+            {
+              "type": "button",
+              "title": "编辑分类",
+              "name": "plugin/cms/category/edit"
+            },
+            {
+              "type": "button",
+              "title": "删除分类",
+              "name": "plugin/cms/category/del"
+            }
+          ]
+        },
+        {
+          "type": "menu",
+          "title": "留言询单",
+          "name": "plugin/cms/inquiry",
+          "icon": "chat-check-line",
+          "path": "inquiry",
+          "component": "@/views/plugin/cms/inquiry/index.vue",
+          "weight": 70,
+          "children": [
+            {
+              "type": "button",
+              "title": "查看留言",
+              "name": "plugin/cms/inquiry/index"
+            },
+            {
+              "type": "button",
+              "title": "回复留言",
+              "name": "plugin/cms/inquiry/reply"
+            },
+            {
+              "type": "button",
+              "title": "删除留言",
+              "name": "plugin/cms/inquiry/del"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "config": [
+    {
+      "name": "active_template",
+      "title": "默认展示模板",
+      "type": "select",
+      "value": "corporate",
+      "tip": "可选：corporate (企业官网)、blog (个人博客)、showcase (产品展示)"
+    },
+    {
+      "name": "site_name",
+      "title": "CMS 站点名称",
+      "type": "string",
+      "value": "HwAdmin 现代科技",
+      "tip": "前台展示的内容站点主名称"
+    },
+    {
+      "name": "site_slogan",
+      "title": "站点标语 / Slogan",
+      "type": "string",
+      "value": "驱动企业下一代数字化创新的全栈智能平台",
+      "tip": "站点副标题与宣传语"
+    },
+    {
+      "name": "site_logo",
+      "title": "站点 Logo 地址",
+      "type": "string",
+      "value": "",
+      "tip": "前台导航栏展示的 Logo 图片地址"
+    },
+    {
+      "name": "seo_keywords",
+      "title": "SEO 关键词",
+      "type": "string",
+      "value": "HwAdmin, ThinkPHP 8, Vue 3, 智能后台, 博客, 企业官网, 产品展厅",
+      "tip": "网站搜索关键字"
+    },
+    {
+      "name": "seo_description",
+      "title": "SEO 描述",
+      "type": "string",
+      "value": "基于 ThinkPHP 8.1 + ThinkORM 4 + Vue 3 极速架构打造的全新一代现代化后台框架。",
+      "tip": "网站元描述"
+    },
+    {
+      "name": "icp_no",
+      "title": "ICP 备案号",
+      "type": "string",
+      "value": "京ICP备20260888号-1",
+      "tip": "页脚备案编号"
+    },
+    {
+      "name": "copyright",
+      "title": "版权信息",
+      "type": "string",
+      "value": "Copyright © 2026 HwAdmin Team. All rights reserved.",
+      "tip": "页脚版权文本"
+    },
+    {
+      "name": "show_theme_switcher",
+      "title": "显示右下角模板切换器",
+      "type": "number",
+      "value": 1,
+      "tip": "1 显示 0 隐藏"
+    },
+    {
+      "name": "page_size",
+      "title": "默认每页条数",
+      "type": "number",
+      "value": 10,
+      "tip": "前台文章与商品列表默认分页条数"
+    }
+  ]
+}

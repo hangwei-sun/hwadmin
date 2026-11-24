@@ -1,0 +1,71 @@
+# 宝塔站点“伪静态”完整规则（已集成 PHP 入口限制，只需保存到宝塔“伪静态”即可，无需再修改站点“配置文件”）。
+# 在当前站点 server 块加载一次，不要重复添加 location /。
+set $hw_block_php "";
+if ($uri ~* "\.(php[0-9]*|phtml|phar)(/|$)") {
+    set $hw_block_php "1";
+}
+if ($uri = "/index.php") {
+    set $hw_block_php "";
+}
+if ($hw_block_php = "1") {
+    return 404;
+}
+location ~* (runtime|application)/ {
+    return 403;
+}
+# ^~ 避免被宝塔默认的 PHP / 静态缓存正则抢先匹配。
+location ^~ /uploads/ {
+    location ~* \.(php[0-9]*|phtml|phar|sh|cgi|pl|py|asp|aspx|jsp|html?|svg)(/|$) { return 404; }
+    add_header X-Content-Type-Options nosniff always;
+    try_files $uri =404;
+}
+location ^~ /plugins/ {
+    location ~* \.(php[0-9]*|phtml|phar|sh|cgi|pl|py|asp|aspx|jsp)(/|$) { return 404; }
+    add_header X-Content-Type-Options nosniff always;
+    try_files $uri =404;
+}
+location = /nginx-baota.conf.example { return 404; }
+location = /nginx.htaccess { return 404; }
+location ~ /\. { return 404; }
+location ~* \.(env|sql|bak|inc|old|sqlite|zip)$ { return 404; }
+# 管理入口统一经 PHP 校验 admin_entry（自定义入口生效时默认 /admin 返回 404）
+location = /admin { rewrite ^(.*)$ /index.php?s=/admin last; }
+location = /admin/ {
+    add_header Cache-Control "no-cache" always;
+    rewrite ^(.*)$ /index.php?s=/admin last;
+}
+location = /admin/index.html {
+    add_header Cache-Control "no-cache" always;
+    rewrite ^(.*)$ /index.php?s=/admin last;
+}
+location ^~ /admin/static/ {
+    try_files $uri =404;
+    expires 1y;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+}
+location ^~ /admin/ {
+    try_files $uri =404;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self';" always;
+}
+location ^~ /api/ {
+    if (!-e $request_filename) {
+        rewrite ^(.*)$ /index.php?s=$1 last;
+        break;
+    }
+}
+location ^~ /adminapi/ {
+    if (!-e $request_filename) {
+        rewrite ^(.*)$ /index.php?s=$1 last;
+        break;
+    }
+}
+location / {
+    if (!-e $request_filename) {
+        rewrite ^(.*)$ /index.php?s=$1 last;
+        break;
+    }
+}

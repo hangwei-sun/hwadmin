@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>企业官网</title>
+  <meta name="description" content="了解我们的产品与服务、客户案例与最新动态，提交您的合作需求。">
+  <style>
+    :root {
+      --bg: #f7f9f6;
+      --surface: #ffffff;
+      --surface-soft: #eaf0e6;
+      --border: #dde5d9;
+      --text: #172c28;
+      --muted: #5b6d65;
+      --brand: #235843;
+      --brand-hover: #1b4735;
+      --accent: #457a64;
+      font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; }
+    a { color: inherit; text-decoration: none; }
+    header, main, footer { max-width: 1140px; margin: auto; padding: 24px; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      border-bottom: 1px solid rgba(221, 229, 217, 0.7);
+    }
+    .brand { font-weight: 750; font-size: 21px; letter-spacing: -0.02em; }
+    nav { display: flex; gap: 24px; font-size: 14px; color: var(--muted); }
+    nav a:hover { color: var(--brand); }
+    .hero { padding: 72px 0 56px; max-width: 820px; }
+    .eyebrow {
+      display: inline-block;
+      color: var(--accent);
+      letter-spacing: 0.14em;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    h1 {
+      font-size: clamp(34px, 5.6vw, 60px);
+      line-height: 1.18;
+      letter-spacing: -0.03em;
+      margin: 20px 0;
+    }
+    p { line-height: 1.8; color: var(--muted); }
+    .lead { font-size: 18px; max-width: 640px; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+    .button, button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: var(--brand);
+      color: #fff;
+      padding: 12px 22px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+    }
+    .button:hover, button:hover { background: var(--brand-hover); }
+    .button.secondary, button.secondary {
+      background: var(--surface);
+      color: var(--text);
+      border-color: var(--border);
+    }
+    .button.secondary:hover, button.secondary:hover {
+      border-color: var(--brand);
+      color: var(--brand);
+      background: #f2f7f3;
+    }
+    section { padding: 36px 0; }
+    h2 { font-size: 28px; margin: 0 0 18px; letter-spacing: -0.02em; }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+    .filter-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+    .tab-btn {
+      background: var(--surface);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .tab-btn:hover { color: var(--brand); border-color: var(--accent); background: #f3f7f4; }
+    .tab-btn.active {
+      background: var(--brand);
+      color: #fff;
+      border-color: var(--brand);
+    }
+    .search-box { position: relative; min-width: 240px; flex: 0 1 320px; }
+    .search-box input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #c9d6c6;
+      border-radius: 999px;
+      background: var(--surface);
+      font: inherit;
+      font-size: 14px;
+    }
+    .search-box input:focus { outline: 2px solid rgba(35, 88, 67, 0.18); border-color: var(--brand); }
+    .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid #e0e8de;
+      border-radius: 14px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+    }
+    .card.clickable { cursor: pointer; }
+    .card.clickable:hover {
+      transform: translateY(-2px);
+      border-color: #b7cbbd;
+      box-shadow: 0 10px 26px rgba(23, 44, 40, 0.06);
+    }
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+    }
+    .type-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      background: #e9f2ec;
+      color: var(--brand);
+    }
+    .type-badge[data-type="product"] { background: #e6f0ff; color: #1d57a8; }
+    .type-badge[data-type="case"] { background: #fef3e2; color: #9c5b0b; }
+    .meta-text { color: #6c8d77; font-size: 12px; }
+    .card h3 { margin: 0; font-size: 18px; line-height: 1.4; color: var(--text); }
+    .card p { margin: 0; font-size: 14px; flex: 1; }
+    .card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #eef2ec;
+      margin-top: auto;
+    }
+    .price-tag { font-weight: 700; color: var(--brand); font-size: 15px; }
+    .detail-link {
+      background: transparent;
+      color: var(--brand);
+      padding: 4px 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .detail-link:hover { background: transparent; text-decoration: underline; }
+    .number { color: #6c8d77; font-size: 13px; margin-bottom: 10px; }
+    .contact {
+      margin: 40px 0;
+      background: var(--surface-soft);
+      border-radius: 18px;
+      padding: 36px;
+      display: grid;
+      grid-template-columns: 1fr 1.15fr;
+      gap: 36px;
+      align-items: start;
+    }
+    form { display: grid; gap: 14px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    label { font-size: 14px; font-weight: 500; display: grid; gap: 6px; color: var(--text); }
+    input, textarea {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid #c9d6c6;
+      border-radius: 8px;
+      background: var(--surface);
+      font: inherit;
+      font-size: 14px;
+      color: var(--text);
+    }
+    textarea { resize: vertical; min-height: 108px; }
+    button:disabled { opacity: 0.65; cursor: wait; }
+    #status { font-size: 14px; min-height: 22px; color: var(--brand); font-weight: 500; }
+    .target-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: #dfece3;
+      border: 1px solid #b5cfb9;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .target-banner.visible { display: flex; }
+    .target-clear {
+      background: transparent;
+      color: var(--brand);
+      padding: 2px 6px;
+      font-size: 12px;
+      border: 1px solid #9ab9a1;
+    }
+    .target-clear:hover { background: #fff; }
+    footer {
+      border-top: 1px solid var(--border);
+      color: #66766c;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .empty {
+      grid-column: 1 / -1;
+      padding: 32px 20px;
+      text-align: center;
+      color: #66766c;
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: 14px;
+    }
+    dialog#detail-modal {
+      width: min(740px, 92vw);
+      max-height: 86vh;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 0;
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 24px 60px rgba(15, 34, 28, 0.22);
+    }
+    dialog#detail-modal::backdrop { background: rgba(16, 30, 25, 0.52); backdrop-filter: blur(2px); }
+    .modal-shell { display: flex; flex-direction: column; max-height: 86vh; }
+    .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid #eef2ec;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }
+    .modal-title { margin: 8px 0 4px; font-size: 22px; line-height: 1.35; }
+    .modal-meta { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); }
+    .modal-close {
+      background: #f1f5f2;
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .modal-close:hover { background: #e3ebe5; }
+    .modal-body { padding: 22px 24px; overflow-y: auto; line-height: 1.85; font-size: 15px; }
+    .modal-seo-summary {
+      padding: 12px 14px;
+      background: #f4f7f3;
+      border-left: 3px solid var(--brand);
+      border-radius: 6px;
+      margin-bottom: 18px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .modal-content { color: var(--text); word-break: break-word; }
+    .modal-content img { max-width: 100%; border-radius: 8px; }
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid #eef2ec;
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      background: #fafcfa;
+    }
+    @media (max-width: 900px) {
+      .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 700px) {
+      header, main, footer { padding: 18px; }
+      nav { gap: 14px; }
+      .hero { padding: 42px 0 28px; }
+      .cards, .contact, .form-row { grid-template-columns: 1fr; }
+      .contact { padding: 22px; gap: 20px; }
+      .lead { font-size: 16px; }
+      .search-box { flex: 1 1 100%; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <a href="#" class="brand" data-brand>企业官网</a>
+  <nav aria-label="主导航">
+    <a href="#services">核心能力</a>
+    <a href="#news">产品与动态</a>
+    <a href="#contact">在线咨询</a>
+  </nav>
+</header>
+
+<main>
+  <div class="hero">
+    <span class="eyebrow" data-brand-tagline>专注价值 · 持续创造</span>
+    <h1 data-hero-title>用专业服务，<br>让每一次合作更进一步。</h1>
+    <p class="lead" data-hero-lead>从了解需求到方案落地，我们以清晰的沟通、可靠的执行，为客户提供适合自身发展的产品与服务。</p>
+    <div class="hero-actions">
+      <a class="button" href="#news">浏览产品与案例</a>
+      <a class="button secondary" href="#contact">告诉我们您的需求 →</a>
+    </div>
+  </div>
+
+  <section id="services">
+    <h2>以客户需求为起点</h2>
+    <div class="cards">
+      <article class="card">
+        <div class="number">01 / 沟通</div>
+        <h3>理解您的目标</h3>
+        <p>深入了解业务场景，明确当前问题与期望成果，制定清晰可落地的规划。</p>
+      </article>
+      <article class="card">
+        <div class="number">02 / 方案</div>
+        <h3>提供合适的服务</h3>
+        <p>围绕实际需求组合产品与定制方案，让专业能力转化为可衡量的业务价值。</p>
+      </article>
+      <article class="card">
+        <div class="number">03 / 交付</div>
+        <h3>认真完成每个细节</h3>
+        <p>关注沟通、进度与使用体验，提供长期运维与技术支持，陪伴项目持续成长。</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="news">
+    <div class="section-head">
+      <div>
+        <span class="eyebrow">SOLUTIONS &amp; UPDATES</span>
+        <h2>产品、案例与动态</h2>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <div class="tabs" role="tablist" aria-label="内容类型切换">
+        <button type="button" class="tab-btn active" data-type="" role="tab" aria-selected="true">全部</button>
+        <button type="button" class="tab-btn" data-type="product" role="tab" aria-selected="false">产品与服务</button>
+        <button type="button" class="tab-btn" data-type="case" role="tab" aria-selected="false">客户案例</button>
+        <button type="button" class="tab-btn" data-type="article" role="tab" aria-selected="false">新闻动态</button>
+      </div>
+      <div class="search-box">
+        <input id="search-input" type="search" placeholder="搜索标题、摘要或关键词…" aria-label="搜索官网内容">
+      </div>
+    </div>
+
+    <div id="articles" class="cards" aria-live="polite">
+      <p class="empty">正在加载内容…</p>
+    </div>
+  </section>
+
+  <section id="contact" class="contact">
+    <div>
+      <span class="eyebrow">开启合作</span>
+      <h2>从一次交流开始。</h2>
+      <p>留下您的联系方式与合作需求，我们的顾问团队将在 24 小时内与您取得联系，并为您准备针对性方案与报价。</p>
+    </div>
+    <form id="inquiry">
+      <input type="hidden" name="target_id" id="inquiry-target-id" value="0">
+      <div id="inquiry-target-banner" class="target-banner" role="status">
+        <span id="inquiry-target-text"></span>
+        <button type="button" id="inquiry-target-clear" class="target-clear">取消关联</button>
+      </div>
+      <div class="form-row">
+        <label>您的称呼
+          <input name="name" autocomplete="name" required maxlength="64" placeholder="例如：张经理">
+        </label>
+        <label>联系电话
+          <input name="mobile" autocomplete="tel" type="tel" required maxlength="32" placeholder="请输入手机或座机">
+        </label>
+      </div>
+      <div class="form-row">
+        <label>所属公司（选填）
+          <input name="company" autocomplete="organization" maxlength="128" placeholder="公司或机构名称">
+        </label>
+        <label>电子邮箱（选填）
+          <input name="email" autocomplete="email" type="email" maxlength="128" placeholder="name@company.com">
+        </label>
+      </div>
+      <label>希望了解什么？
+        <textarea name="content" required maxlength="2000" placeholder="请简述您的项目背景、预算或关注的产品方案…"></textarea>
+      </label>
+      <button type="submit">提交咨询</button>
+      <div id="status" role="status"></div>
+    </form>
+  </section>
+</main>
+
+<footer>
+  <span>© <span id="year"></span> <span data-brand>企业官网</span></span>
+  <span>Powered by HwAdmin Corporate Site</span>
+</footer>
+
+<dialog id="detail-modal" aria-labelledby="modal-title">
+  <div class="modal-shell">
+    <div class="modal-header">
+      <div>
+        <span id="modal-type-badge" class="type-badge" data-type="article">新闻动态</span>
+        <h3 id="modal-title" class="modal-title">正在加载…</h3>
+        <div id="modal-meta" class="modal-meta"></div>
+      </div>
+      <button type="button" class="modal-close" id="modal-close-btn" aria-label="关闭详情弹窗">关闭 ✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="modal-seo-summary" class="modal-seo-summary" hidden></div>
+      <div id="modal-content" class="modal-content"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="secondary" id="modal-cancel-btn">返回列表</button>
+      <button type="button" id="modal-consult-btn">咨询该方案/产品 →</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  document.querySelector('#year').textContent = String(new Date().getFullYear());
+
+  const TYPE_LABELS = {
+    product: '产品与服务',
+    case: '客户案例',
+    article: '新闻动态'
+  };
+
+  let currentType = '';
+  let currentKeyword = '';
+  let loadedItems = [];
+  let activeDetail = null;
+
+  async function loadBrandConfig() {
+    const candidates = ['./brand.json', '/site/brand.json', '/admin/site/brand.json'];
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (!data || typeof data !== 'object') continue;
+        if (data.name) {
+          document.title = data.name;
+          document.querySelectorAll('[data-brand]').forEach((el) => {
+            el.textContent = data.name;
+          });
+        }
+        if (data.tagline) {
+          document.querySelectorAll('[data-brand-tagline]').forEach((el) => {
+            el.textContent = data.tagline;
+          });
+        }
+        if (data.hero_title) {
+          const heroTitle = document.querySelector('[data-hero-title]');
+          if (heroTitle) heroTitle.textContent = data.hero_title;
+        }
+        if (data.hero_lead) {
+          const heroLead = document.querySelector('[data-hero-lead]');
+          if (heroLead) heroLead.textContent = data.hero_lead;
+        }
+        break;
+      } catch {
+        // 尝试下一个路径
+      }
+    }
+  }
+
+  function formatTypeLabel(type) {
+    return TYPE_LABELS[type] || '资讯内容';
+  }
+
+  function formatDate(ts) {
+    if (!ts || Number(ts) <= 0) return '';
+    const d = new Date(Number(ts) * 1000);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toISOString().slice(0, 10);
+  }
+
+  function sanitizeHtml(rawHtml) {
+    const doc = new DOMParser().parseFromString(String(rawHtml || ''), 'text/html');
+    const allowedTags = new Set([
+      'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li',
+      'h1', 'h2', 'h3', 'h4', 'blockquote', 'code', 'pre', 'a', 'img', 'span', 'div'
+    ]);
+    function clean(node) {
+      const children = Array.from(node.childNodes);
+      for (const child of children) {
+        if (child.nodeType === Node.ELEMENT_NODE) {
+          const tag = child.tagName.toLowerCase();
+          if (!allowedTags.has(tag)) {
+            if (tag === 'script' || tag === 'style' || tag === 'iframe' || tag === 'object') {
+              child.remove();
+            } else {
+              const frag = document.createDocumentFragment();
+              while (child.firstChild) frag.appendChild(child.firstChild);
+              clean(frag);
+              child.replaceWith(frag);
+            }
+            continue;
+          }
+          for (const attr of Array.from(child.attributes)) {
+            const name = attr.name.toLowerCase();
+            if (name.startsWith('on')) {
+              child.removeAttribute(attr.name);
+              continue;
+            }
+            if (tag === 'a' && name === 'href') {
+              if (!/^(https?:|mailto:|tel:|\/|#)/i.test(attr.value.trim())) {
+                child.removeAttribute(attr.name);
+              }
+            } else if (tag === 'img' && (name === 'src' || name === 'alt')) {
+              if (name === 'src' && !/^(https?:|\/)/i.test(attr.value.trim())) {
+                child.removeAttribute(attr.name);
+              }
+            } else {
+              child.removeAttribute(attr.name);
+            }
+          }
+          if (tag === 'a') {
+            child.setAttribute('rel', 'noopener noreferrer');
+            child.setAttribute('target', '_blank');
+          }
+          clean(child);
+        }
+      }
+    }
+    clean(doc.body);
+    return doc.body;
+  }
+
+  function renderCards() {
+    const target = document.querySelector('#articles');
+    target.replaceChildren();
+    const kw = currentKeyword.trim().toLowerCase();
+    const filtered = loadedItems.filter((item) => {
+      if (currentType && item.type !== currentType) return false;
+      if (!kw) return true;
+      const haystack = `${item.title || ''} ${item.summary || ''} ${item.seo_keywords || ''}`.toLowerCase();
+      return haystack.includes(kw);
+    });
+
+    if (!filtered.length) {
+      const empty = document.createElement('p');
+      empty.className = 'empty';
+      empty.textContent = kw
+        ? '未找到匹配的内容，请尝试更换关键词或切换分类。'
+        : '该分类内容正在准备中，欢迎直接与我们交流。';
+      target.append(empty);
+      return;
+    }
+
+    filtered.forEach((item) => {
+      const card = document.createElement('article');
+      card.className = 'card clickable';
+      card.tabIndex = 0;
+
+      const top = document.createElement('div');
+      top.className = 'card-top';
+
+      const badge = document.createElement('span');
+      badge.className = 'type-badge';
+      badge.dataset.type = item.type || 'article';
+      badge.textContent = formatTypeLabel(item.type);
+
+      const meta = document.createElement('span');
+      meta.className = 'meta-text';
+      meta.textContent = `浏览 ${Number(item.views || 0)}`;
+      top.append(badge, meta);
+
+      const title = document.createElement('h3');
+      title.textContent = item.title || '未命名内容';
+
+      const summary = document.createElement('p');
+      summary.textContent = item.summary || item.description || item.seo?.description || '点击查看详情内容与方案说明。';
+
+      const footer = document.createElement('div');
+      footer.className = 'card-footer';
+
+      const price = document.createElement('span');
+      price.className = 'price-tag';
+      if (item.type === 'product' && Number(item.price || 0) > 0) {
+        price.textContent = `¥${Number(item.price).toFixed(2)}`;
+      } else {
+        price.textContent = formatDate(item.create_time) || '官方发布';
+        price.className = 'meta-text';
+      }
+
+      const detailBtn = document.createElement('button');
+      detailBtn.type = 'button';
+      detailBtn.className = 'detail-link';
+      detailBtn.textContent = '查看详情 →';
+      detailBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openDetailModal(item);
+      });
+
+      footer.append(price, detailBtn);
+      card.append(top, title, summary, footer);
+      card.addEventListener('click', () => openDetailModal(item));
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openDetailModal(item);
+        }
+      });
+      target.append(card);
+    });
+  }
+
+  async function fetchArticles(type = '') {
+    const target = document.querySelector('#articles');
+    target.innerHTML = '<p class="empty">正在加载内容…</p>';
+    try {
+      const qs = new URLSearchParams({ limit: '50' });
+      if (type) qs.set('type', type);
+      const response = await fetch(`/api/site/articles?${qs.toString()}`);
+      const payload = await response.json();
+      if (payload.code !== 1) throw new Error(payload.msg || 'load');
+      loadedItems = Array.isArray(payload.data?.list) ? payload.data.list : [];
+      renderCards();
+    } catch {
+      target.innerHTML = '<p class="empty">内容暂时无法加载，请稍后重试。</p>';
+    }
+  }
+
+  const modal = document.querySelector('#detail-modal');
+  const modalTypeBadge = document.querySelector('#modal-type-badge');
+  const modalTitle = document.querySelector('#modal-title');
+  const modalMeta = document.querySelector('#modal-meta');
+  const modalSeoSummary = document.querySelector('#modal-seo-summary');
+  const modalContent = document.querySelector('#modal-content');
+  const modalConsultBtn = document.querySelector('#modal-consult-btn');
+
+  function closeDetailModal() {
+    if (typeof modal.close === 'function' && modal.open) {
+      modal.close();
+    } else {
+      modal.removeAttribute('open');
+    }
+  }
+
+  async function openDetailModal(item) {
+    activeDetail = item;
+    modalTypeBadge.dataset.type = item.type || 'article';
+    modalTypeBadge.textContent = formatTypeLabel(item.type);
+    modalTitle.textContent = item.title || '内容详情';
+    modalMeta.textContent = '正在加载完整正文…';
+    modalSeoSummary.hidden = true;
+    modalContent.textContent = '正在获取详细资料，请稍候…';
+    modalConsultBtn.disabled = false;
+
+    if (typeof modal.showModal === 'function') {
+      if (!modal.open) modal.showModal();
+    } else {
+      modal.setAttribute('open', 'open');
+    }
+
+    try {
+      const res = await fetch(`/api/site/detail?id=${encodeURIComponent(item.id)}`);
+      const payload = await res.json();
+      if (payload.code !== 1 || !payload.data) {
+        throw new Error(payload.msg || '详情加载失败');
+      }
+      const detail = payload.data;
+      activeDetail = detail;
+      modalTypeBadge.dataset.type = detail.type || 'article';
+      modalTypeBadge.textContent = formatTypeLabel(detail.type);
+      modalTitle.textContent = detail.title || item.title || '内容详情';
+
+      const metaParts = [`浏览量：${Number(detail.views ?? item.views ?? 0)}`];
+      if (detail.type === 'product' && Number(detail.price || 0) > 0) {
+        metaParts.push(`参考报价：¥${Number(detail.price).toFixed(2)}`);
+      }
+      const dateStr = formatDate(detail.create_time);
+      if (dateStr) metaParts.push(`发布时间：${dateStr}`);
+      modalMeta.textContent = metaParts.join(' · ');
+
+      const seoDesc = detail.seo?.description || detail.summary || '';
+      if (seoDesc) {
+        modalSeoSummary.textContent = `摘要：${seoDesc}`;
+        modalSeoSummary.hidden = false;
+      }
+
+      const rawContent = detail.content || detail.summary || '暂无更多正文内容。';
+      modalContent.replaceChildren();
+      if (/<[a-z][\s\S]*>/i.test(rawContent)) {
+        const cleaned = sanitizeHtml(rawContent);
+        while (cleaned.firstChild) modalContent.appendChild(cleaned.firstChild);
+      } else {
+        rawContent.split(/\n+/).forEach((line) => {
+          const p = document.createElement('p');
+          p.textContent = line;
+          modalContent.appendChild(p);
+        });
+      }
+    } catch (err) {
+      modalMeta.textContent = `浏览量：${Number(item.views || 0)}`;
+      modalContent.textContent = item.summary || err.message || '暂时无法获取完整正文。';
+    }
+  }
+
+  function setInquiryTarget(detail) {
+    const targetInput = document.querySelector('#inquiry-target-id');
+    const banner = document.querySelector('#inquiry-target-banner');
+    const bannerText = document.querySelector('#inquiry-target-text');
+    const contentField = document.querySelector('#inquiry textarea[name="content"]');
+
+    if (detail && detail.id) {
+      targetInput.value = String(detail.id);
+      bannerText.textContent = `咨询意向：${formatTypeLabel(detail.type)}《${detail.title}》`;
+      banner.classList.add('visible');
+      if (contentField && !contentField.value.trim()) {
+        contentField.value = `我希望进一步了解「${detail.title}」的具体方案与报价。`;
+      }
+    } else {
+      targetInput.value = '0';
+      bannerText.textContent = '';
+      banner.classList.remove('visible');
+    }
+  }
+
+  document.querySelector('#modal-close-btn').addEventListener('click', closeDetailModal);
+  document.querySelector('#modal-cancel-btn').addEventListener('click', closeDetailModal);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeDetailModal();
+  });
+  modalConsultBtn.addEventListener('click', () => {
+    if (activeDetail) setInquiryTarget(activeDetail);
+    closeDetailModal();
+    const contactEl = document.querySelector('#contact');
+    if (contactEl) {
+      contactEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    const nameInput = document.querySelector('#inquiry input[name="name"]');
+    if (nameInput) nameInput.focus({ preventScroll: true });
+  });
+
+  document.querySelector('#inquiry-target-clear').addEventListener('click', () => {
+    setInquiryTarget(null);
+  });
+
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach((other) => {
+        other.classList.remove('active');
+        other.setAttribute('aria-selected', 'false');
+      });
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      currentType = btn.dataset.type || '';
+      fetchArticles(currentType);
+    });
+  });
+
+  document.querySelector('#search-input').addEventListener('input', (e) => {
+    currentKeyword = e.currentTarget.value || '';
+    renderCards();
+  });
+
+  document.querySelector('#inquiry').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    const status = document.querySelector('#status');
+    button.disabled = true;
+    status.textContent = '正在提交…';
+    try {
+      const formData = new FormData(form);
+      const payload = {
+        target_id: Number(formData.get('target_id') || 0),
+        name: String(formData.get('name') || '').trim(),
+        mobile: String(formData.get('mobile') || '').trim(),
+        company: String(formData.get('company') || '').trim(),
+        email: String(formData.get('email') || '').trim(),
+        content: String(formData.get('content') || '').trim(),
+      };
+      const response = await fetch('/api/site/submitInquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (data.code !== 1) throw new Error(data.msg || '暂时无法提交，请稍后重试');
+      status.textContent = data.msg || '已收到您的咨询，我们会与您联系。';
+      form.reset();
+      setInquiryTarget(null);
+    } catch (error) {
+      status.textContent = error.message || '网络暂时不可用，请重试';
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  loadBrandConfig();
+  fetchArticles();
+</script>
+</body>
+</html>

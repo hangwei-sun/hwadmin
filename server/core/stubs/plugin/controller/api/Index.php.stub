@@ -1,0 +1,19 @@
+<?php
+declare(strict_types=1);
+
+namespace plugins\{{name}}\controller\api;
+
+use core\base\ApiController;
+
+/**
+ * 前台接口：GET /api/plugin/{{name}}/index/hello
+ */
+class Index extends ApiController
+{
+    protected array $noNeedLogin = ['hello'];
+
+    public function hello(): void
+    {
+        $this->success(['message' => 'hello from {{name}}']);
+    }
+}

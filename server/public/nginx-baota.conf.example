@@ -1,0 +1,46 @@
+# 宝塔站点“配置文件”模板。修改域名、目录、PHP socket、证书路径。
+# 用本配置替换对应 server 块，不再 include enable-php-*.conf（避免宽泛 PHP 解析）。
+# 公网正式使用前在面板申请/部署有效证书；此模板不会自动申请证书。
+server {
+    listen 80;
+    server_name admin.example.com;
+    location ^~ /.well-known/acme-challenge/ { root /www/wwwroot/admin.example.com/public; }
+    location / { return 301 https://admin.example.com$request_uri; }
+}
+server {
+    listen 443 ssl;
+    server_name admin.example.com;
+    root /www/wwwroot/admin.example.com/public;
+    index index.php index.html;
+    ssl_certificate /www/server/panel/vhost/cert/admin.example.com/fullchain.pem;
+    ssl_certificate_key /www/server/panel/vhost/cert/admin.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    server_tokens off;
+    client_max_body_size 500M;
+    gzip on;
+    gzip_static on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/javascript application/json application/javascript font/woff2 font/ttf image/svg+xml;
+    # 在 HTTPS 稳定后启用 HSTS；不要在测试域名上启用 includeSubDomains/preload。
+    # add_header Strict-Transport-Security "max-age=31536000" always;
+    include /www/wwwroot/admin.example.com/public/nginx.htaccess;
+    # 注：上述 nginx.htaccess 已包含 /admin/static/ 强缓存；若未引入 nginx.htaccess，可取消下方注释启用强缓存：
+    # location ^~ /admin/static/ {
+    #     try_files $uri =404;
+    #     expires 1y;
+    #     add_header X-Content-Type-Options nosniff always;
+    #     add_header Cache-Control "public, max-age=31536000, immutable" always;
+    # }
+    location = /index.php {
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_PROXY "";
+        fastcgi_pass unix:/tmp/php-cgi-83.sock;
+        fastcgi_read_timeout 300;
+    }
+    location ~* \.php { return 404; }
+    location ~ /\. { return 404; }
+    location ~* \.(sql|bak|env|sqlite|zip|log)$ { return 404; }
+}

@@ -1,0 +1,530 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# HwAdmin 统一命令行启动入口 (Linux / macOS / WSL)
+# 用法:
+#   ./hw doctor [--json] [--mode=sqlite|mysql|pgsql]
+#   ./hw bootstrap [--backend-only] [--dev|--with-test|--no-dev] [--force]
+#   ./hw dev [--sqlite]
+#   ./hw stop
+#   ./hw inspect [--json]
+#   ./hw verify [--json] [--skip-package]
+#   ./hw package [--mode=unified|all] [--version=vX.Y.Z]
+#   ./hw deploy plan|apply|rollback|report [options...]
+#   ./hw runtime matrix|status|prepare [options...]
+#   ./hw runtime-verify <archive_path> <expected_sha256>
+# ==============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "$SCRIPT_DIR/.hw-state/runtime/bin" ]; then
+    export PATH="$SCRIPT_DIR/.hw-state/runtime/bin:$HOME/.local/bin:$PATH"
+else
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
+cmd_help() {
+    cat << 'EOF'
+================================================================
+ HwAdmin 统一 CLI 启动入口
+================================================================
+使用方式: ./hw <command> [arguments...]
+
+可用命令:
+  start           一步准备业务模板并启动预览 [website|admin|miniapp] [--name 名称]
+  doctor          运行运行环境与依赖健康体检 [--json] [--mode=sqlite|mysql|pgsql]
+  bootstrap       按应用描述准备锁定依赖并初始化，保留既有数据 [--backend-only] [--dev|--with-test|--no-dev]
+  dev             一键启动全栈本地联调服务 (后端:8000 + 前端:15173)
+  stop            安全停止当前项目的本地开发服务进程
+  inspect         输出项目路由与架构自省事实清单 [--json]
+  verify          运行完整放行验证套件 (lint/doctor/phpunit/smoke/pc_types/mobile_types/package) [--json] [--skip-package]
+  package         构建统一发布包 (hwadmin-vX.Y.Z.zip) [--mode=unified|all]
+  deploy          声明式生产部署编排工具 (plan|apply|rollback|report)
+  runtime         跨平台运行时矩阵、环境探测与受管准备器 (matrix|status|prepare)
+  runtime-verify  严格校验受管运行时归档包 SHA-256 签名 (别名: verify-runtime)
+  help            查看帮助说明
+EOF
+}
+
+cmd_start() {
+    python3 "$SCRIPT_DIR/scripts/start-project.py" "$@" || return $?
+    for argument in "$@"; do
+        [ "$argument" != '--prepare-only' ] || return 0
+    done
+    # WSL can reuse Windows Node/pnpm through the existing native dev launcher.
+    if command -v cmd.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
+        local ps='pwsh.exe'
+        command -v "$ps" >/dev/null 2>&1 || ps='powershell.exe'
+        "$ps" -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w "$SCRIPT_DIR/scripts/dev.ps1")" -AutoPort
+    else
+        bash "$SCRIPT_DIR/scripts/dev.sh" --auto-port
+    fi
+}
+
+# 受管运行时包 SHA-256 强校验函数（哈希不匹配或文件缺失立即拒绝并退出非零）
+verify_runtime_archive() {
+    local archive_path="${1:-}"
+    local expected_sha="${2:-}"
+    if [ -z "$archive_path" ] || [ ! -f "$archive_path" ]; then
+        echo "❌ 运行时包校验失败: 文件不存在 ($archive_path)" >&2
+        return 1
+    fi
+    if [ -z "$expected_sha" ] || [[ ! "$expected_sha" =~ ^[a-fA-F0-9]{64}$ ]]; then
+        echo "❌ 运行时包校验失败: 未提供合法的 64 位 SHA-256 预期签名" >&2
+        return 1
+    fi
+    local actual_sha=""
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual_sha=$(sha256sum "$archive_path" | awk '{print tolower($1)}')
+    elif command -v shasum >/dev/null 2>&1; then
+        actual_sha=$(shasum -a 256 "$archive_path" | awk '{print tolower($1)}')
+    elif command -v python3 >/dev/null 2>&1; then
+        actual_sha=$(python3 -c "import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], 'rb').read()).hexdigest().lower())" "$archive_path")
+    else
+        echo "❌ 运行时包校验失败: 当前环境缺少 sha256sum / shasum / python3" >&2
+        return 1
+    fi
+    local expected_lower
+    expected_lower=$(echo "$expected_sha" | tr '[:upper:]' '[:lower:]')
+    if [ "$actual_sha" != "$expected_lower" ]; then
+        echo "❌ 运行时包 SHA-256 校验不匹配！已拒绝加载该运行时包。" >&2
+        echo "   预期: $expected_lower" >&2
+        echo "   实际: $actual_sha" >&2
+        return 1
+    fi
+    echo "✔ 运行时包 SHA-256 校验通过: $archive_path ($actual_sha)"
+    return 0
+}
+
+run_pnpm() {
+    if command -v pnpm >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+        (cd "$SCRIPT_DIR" && pnpm "$@")
+    elif command -v cmd.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
+        local win_dir
+        win_dir=$(wslpath -w "$SCRIPT_DIR" 2>/dev/null || true)
+        if [ -n "$win_dir" ] && [[ "$win_dir" =~ ^[A-Za-z]:\\ ]]; then
+            (cd "$SCRIPT_DIR" && MSYS_NO_PATHCONV=1 cmd.exe /d /c pnpm "$@")
+        else
+            return 127
+        fi
+    else
+        return 127
+    fi
+}
+
+cmd_bootstrap() {
+    local backend_only=0
+    local force=0
+    local with_dev=0
+    local no_dev=0
+    local forwarded=()
+    for argument in "$@"; do
+        case "$argument" in
+            --backend-only) backend_only=1 ;;
+            --dev|--with-test) with_dev=1 ;;
+            --no-dev) no_dev=1 ;;
+            --force) force=1; forwarded+=("$argument") ;;
+            *) forwarded+=("$argument") ;;
+        esac
+    done
+    if ! command -v php >/dev/null 2>&1; then
+        echo "缺少 PHP >=8.2；请先执行 hw doctor，按已声明的 WSL/容器运行方式准备 PHP" >&2
+        return 1
+    fi
+    local backend="$SCRIPT_DIR/server"
+    [ -f "$backend/think" ] || backend="$SCRIPT_DIR"
+    local need_composer=0
+    if [ ! -f "$backend/vendor/autoload.php" ]; then
+        need_composer=1
+    elif [ "$no_dev" -eq 0 ] && { [ "$with_dev" -eq 1 ] || { [ -f "$backend/tests/bootstrap.php" ] && [ ! -f "$backend/vendor/bin/phpunit" ]; }; }; then
+        need_composer=1
+        echo "[bootstrap] 检测到测试基座但缺少 vendor/bin/phpunit，正在补齐开发依赖..."
+    fi
+    if [ "$need_composer" -eq 1 ]; then
+        command -v composer >/dev/null 2>&1 || { echo "缺少 Composer，不能准备锁定后端依赖" >&2; return 1; }
+        local composer_flags=(--prefer-dist --no-interaction)
+        [ "$no_dev" -eq 1 ] && composer_flags+=(--no-dev)
+        (cd "$backend" && composer install "${composer_flags[@]}") || return $?
+    fi
+    if [ "$backend_only" -eq 0 ]; then
+        command -v python3 >/dev/null 2>&1 || { echo "需要 Python 3 读取客户端配置" >&2; return 1; }
+        local clients
+        clients=$(python3 - "$SCRIPT_DIR/hw.project.json" <<'PY'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+data = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {'clients': ['admin-pc']}
+clients = data.get('clients')
+allowed = {'admin-pc', 'desktop-tauri', 'mobile-h5', 'mobile-mp-weixin'}
+if not isinstance(clients, list) or not clients or any(c not in allowed for c in clients):
+    raise SystemExit('hw.project.json clients 无效，请先校验应用描述')
+if any(c in clients for c in ('admin-pc', 'desktop-tauri')):
+    print('admin')
+if any(c in clients for c in ('mobile-h5', 'mobile-mp-weixin')):
+    print('mobile')
+PY
+        ) || return $?
+        local ui_rel="admin-ui"
+        [ -f "$SCRIPT_DIR/$ui_rel/package.json" ] || ui_rel="sources/admin-ui"
+        while IFS= read -r client; do
+            local directory="$ui_rel"
+            [ "$client" != "mobile" ] || directory="$ui_rel/mobile"
+            [ -f "$SCRIPT_DIR/$directory/package.json" ] || { echo "缺少所选客户端工程: $directory" >&2; return 1; }
+            if [ "$force" -eq 0 ] && [ -f "$SCRIPT_DIR/$directory/node_modules/.modules.yaml" ]; then
+                echo "[bootstrap] 复用已有客户端依赖: $directory"
+            else
+                echo "[bootstrap] 准备锁定客户端依赖: $directory"
+                run_pnpm --dir "$directory" install --frozen-lockfile --prefer-offline </dev/null || return $?
+            fi
+        done <<< "$clients"
+    fi
+    bash "$SCRIPT_DIR/scripts/wsl-dev.sh" bootstrap "${forwarded[@]}"
+}
+
+cmd_verify() {
+    local json_output=0
+    local skip_package=0
+    for arg in "$@"; do
+        case "$arg" in
+            --json) json_output=1 ;;
+            --skip-package) skip_package=1 ;;
+        esac
+    done
+
+    local state_dir="$SCRIPT_DIR/.hw-state"
+    local log_dir="$state_dir/verify-logs"
+    local report_file="$state_dir/verify-report.json"
+    mkdir -p "$log_dir"
+
+    local all_pass=1
+    local passed_count=0
+    local failed_count=0
+    local skipped_count=0
+
+    local wsl_script="$SCRIPT_DIR/scripts/wsl-dev.sh"
+    local pkg_script="$SCRIPT_DIR/scripts/build-release.py"
+
+    # 1. Lint
+    local lint_pass=false
+    local lint_rc=127
+    local lint_msg="缺失必需脚本 scripts/wsl-dev.sh"
+    local lint_log=".hw-state/verify-logs/lint.log"
+    if [ -f "$wsl_script" ]; then
+        lint_rc=0
+        bash "$wsl_script" lint >"$SCRIPT_DIR/$lint_log" 2>&1 || lint_rc=$?
+        if [ "$lint_rc" -eq 0 ]; then
+            lint_pass=true
+            lint_msg="PHP 语法检查全部通过"
+        else
+            lint_pass=false
+            lint_msg="PHP 语法校验未通过 (exit $lint_rc)"
+        fi
+    else
+        echo "$lint_msg" >"$SCRIPT_DIR/$lint_log"
+    fi
+    if [ "$lint_pass" = "true" ]; then passed_count=$((passed_count + 1)); else all_pass=0; failed_count=$((failed_count + 1)); fi
+
+    # 2. Doctor
+    local doc_pass=false
+    local doc_rc=127
+    local doc_msg="缺失必需脚本 scripts/wsl-dev.sh"
+    local doc_log=".hw-state/verify-logs/doctor.log"
+    if [ -f "$wsl_script" ]; then
+        doc_rc=0
+        bash "$wsl_script" doctor --json >"$SCRIPT_DIR/$doc_log" 2>&1 || doc_rc=$?
+        if [ "$doc_rc" -eq 0 ]; then
+            doc_pass=true
+            doc_msg="环境基准诊断达标"
+        else
+            doc_pass=false
+            doc_msg="环境存在未满足的必需项 (exit $doc_rc)"
+        fi
+    else
+        echo "$doc_msg" >"$SCRIPT_DIR/$doc_log"
+    fi
+    if [ "$doc_pass" = "true" ]; then passed_count=$((passed_count + 1)); else all_pass=0; failed_count=$((failed_count + 1)); fi
+
+    # 3. PHPUnit
+    local unit_pass=false
+    local unit_rc=127
+    local unit_msg="缺失必需脚本 scripts/wsl-dev.sh"
+    local unit_log=".hw-state/verify-logs/phpunit.log"
+    if [ -f "$wsl_script" ]; then
+        local verify_backend="$SCRIPT_DIR/server"
+        [ -f "$verify_backend/think" ] || verify_backend="$SCRIPT_DIR"
+        : >"$SCRIPT_DIR/$unit_log"
+        if [ -f "$verify_backend/tests/bootstrap.php" ] && [ -f "$verify_backend/composer.json" ] && [ ! -f "$verify_backend/vendor/bin/phpunit" ]; then
+            if command -v composer >/dev/null 2>&1; then
+                echo "[verify] 检测到缺少 vendor/bin/phpunit，正在自动补齐后端开发依赖..." >>"$SCRIPT_DIR/$unit_log"
+                (cd "$verify_backend" && composer install --prefer-dist --no-interaction >>"$SCRIPT_DIR/$unit_log" 2>&1) || true
+            else
+                echo "[verify] 缺少 vendor/bin/phpunit 且未检测到 composer，请先执行 ./hw bootstrap --with-test 或在 server/ 运行 composer install" >>"$SCRIPT_DIR/$unit_log"
+            fi
+        fi
+        unit_rc=0
+        bash "$wsl_script" test >>"$SCRIPT_DIR/$unit_log" 2>&1 || unit_rc=$?
+        if [ "$unit_rc" -eq 0 ]; then
+            unit_pass=true
+            unit_msg="PHPUnit 单元与集成测试全部通过"
+        else
+            unit_pass=false
+            if [ ! -f "$verify_backend/vendor/bin/phpunit" ]; then
+                unit_msg="缺少 vendor/bin/phpunit，请先执行 ./hw bootstrap --with-test 或在 server/ 运行 composer install (exit $unit_rc)"
+            else
+                unit_msg="PHPUnit 测试未通过 (exit $unit_rc)"
+            fi
+        fi
+    else
+        echo "$unit_msg" >"$SCRIPT_DIR/$unit_log"
+    fi
+    if [ "$unit_pass" = "true" ]; then passed_count=$((passed_count + 1)); else all_pass=0; failed_count=$((failed_count + 1)); fi
+
+    # 4. Smoke Test
+    local smoke_pass=false
+    local smoke_rc=127
+    local smoke_msg="缺失必需脚本 scripts/wsl-dev.sh"
+    local smoke_log=".hw-state/verify-logs/smoke.log"
+    if [ -f "$wsl_script" ]; then
+        smoke_rc=0
+        bash "$wsl_script" smoke >"$SCRIPT_DIR/$smoke_log" 2>&1 || smoke_rc=$?
+        if [ "$smoke_rc" -eq 0 ]; then
+            smoke_pass=true
+            smoke_msg="核心链路冒烟测试全部通过"
+        else
+            smoke_pass=false
+            smoke_msg="冒烟测试执行失败 (exit $smoke_rc)"
+        fi
+    else
+        echo "$smoke_msg" >"$SCRIPT_DIR/$smoke_log"
+    fi
+    if [ "$smoke_pass" = "true" ]; then passed_count=$((passed_count + 1)); else all_pass=0; failed_count=$((failed_count + 1)); fi
+
+    # 5. PC Frontend Type Check
+    local pc_pass=false
+    local pc_rc=127
+    local pc_msg="缺失 PC 前端工程 admin-ui/package.json"
+    local pc_log=".hw-state/verify-logs/pc_types.log"
+    local ui_rel=""
+    if [ -f "$SCRIPT_DIR/admin-ui/package.json" ]; then
+        ui_rel="admin-ui"
+    elif [ -f "$SCRIPT_DIR/sources/admin-ui/package.json" ]; then
+        ui_rel="sources/admin-ui"
+    fi
+    if [ -n "$ui_rel" ]; then
+        pc_rc=0
+        run_pnpm --dir "$ui_rel" vue-tsc --noEmit >"$SCRIPT_DIR/$pc_log" 2>&1 || pc_rc=$?
+        if [ "$pc_rc" -eq 0 ]; then
+            pc_pass=true
+            pc_msg="PC 管理端 TypeScript 类型检查通过"
+        else
+            pc_pass=false
+            pc_msg="PC 管理端类型检查失败 (exit $pc_rc)"
+        fi
+    else
+        echo "$pc_msg" >"$SCRIPT_DIR/$pc_log"
+    fi
+    if [ "$pc_pass" = "true" ]; then passed_count=$((passed_count + 1)); else all_pass=0; failed_count=$((failed_count + 1)); fi
+
+    # 6. Mobile Type Check
+    local mob_pass=false
+    local mob_rc=127
+    local mob_msg="缺失移动端工程 admin-ui/mobile/package.json"
+    local mob_log=".hw-state/verify-logs/mobile_types.log"
+    local mob_rel=""
+    if [ -f "$SCRIPT_DIR/admin-ui/mobile/package.json" ]; then
+        mob_rel="admin-ui/mobile"
+    elif [ -f "$SCRIPT_DIR/sources/admin-ui/mobile/package.json" ]; then
+        mob_rel="sources/admin-ui/mobile"
+    fi
+    if [ -n "$mob_rel" ]; then
+        mob_rc=0
+        run_pnpm --dir "$mob_rel" run type-check >"$SCRIPT_DIR/$mob_log" 2>&1 || mob_rc=$?
+        if [ "$mob_rc" -eq 0 ]; then
+            mob_pass=true
+            mob_msg="移动端 TypeScript 类型检查通过"
+        else
+            mob_pass=false
+            mob_msg="移动端类型检查失败 (exit $mob_rc)"
+        fi
+    else
+        echo "$mob_msg" >"$SCRIPT_DIR/$mob_log"
+    fi
+    if [ "$mob_pass" = "true" ]; then passed_count=$((passed_count + 1)); else all_pass=0; failed_count=$((failed_count + 1)); fi
+
+    # 7. Package Artifacts Check
+    local pkg_pass=false
+    local pkg_status="failed"
+    local pkg_rc=127
+    local pkg_msg="缺失必需打包脚本 scripts/build-release.py 或 Python 3 运行时"
+    local pkg_log=".hw-state/verify-logs/package.log"
+    local py_cmd=""
+    if command -v python3 >/dev/null 2>&1; then
+        py_cmd="python3"
+    elif command -v python >/dev/null 2>&1; then
+        py_cmd="python"
+    fi
+    if [ "$skip_package" -eq 1 ]; then
+        pkg_pass=false
+        pkg_status="skipped"
+        pkg_rc=0
+        pkg_msg="已通过 --skip-package 跳过制品打包校验（未计入通过）"
+        echo "$pkg_msg" >"$SCRIPT_DIR/$pkg_log"
+        skipped_count=$((skipped_count + 1))
+    elif [ -n "$py_cmd" ] && [ -f "$pkg_script" ] && [ -f "$SCRIPT_DIR/scripts/verification_evidence.py" ]; then
+        pkg_rc=0
+        $py_cmd "$pkg_script" --mode=dev >"$SCRIPT_DIR/$pkg_log" 2>&1 || pkg_rc=$?
+        if [ "$pkg_rc" -eq 0 ]; then
+            pkg_pass=true
+            pkg_status="passed"
+            pkg_msg="制品打包规格与断言检验通过"
+        else
+            pkg_pass=false
+            pkg_status="failed"
+            pkg_msg="制品构建或完整性校验未通过 (exit $pkg_rc)"
+        fi
+        if [ "$pkg_pass" = "true" ]; then passed_count=$((passed_count + 1)); else all_pass=0; failed_count=$((failed_count + 1)); fi
+    else
+        echo "$pkg_msg" >"$SCRIPT_DIR/$pkg_log"
+        all_pass=0
+        failed_count=$((failed_count + 1))
+    fi
+
+    local verified_at
+    verified_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%S")
+    local overall_status="pass"
+    local full_all_passed="true"
+    if [ "$all_pass" -ne 1 ]; then
+        overall_status="fail"
+        full_all_passed="false"
+    elif [ "$skipped_count" -gt 0 ]; then
+        overall_status="partial"
+        full_all_passed="false"
+    fi
+
+    cat > "$report_file" << EOF
+{
+  "status": "$overall_status",
+  "verified_at": "$verified_at",
+  "summary": {
+    "all_passed": $full_all_passed,
+    "total": 7,
+    "passed": $passed_count,
+    "failed": $failed_count,
+    "skipped": $skipped_count
+  },
+  "checks": [
+    {"id": "lint", "name": "PHP 语法校验 (lint)", "pass": $lint_pass, "status": "$([ "$lint_pass" = "true" ] && echo "passed" || echo "failed")", "exit_code": $lint_rc, "message": "$lint_msg", "log_file": "$lint_log"},
+    {"id": "doctor", "name": "环境基准诊断 (doctor)", "pass": $doc_pass, "status": "$([ "$doc_pass" = "true" ] && echo "passed" || echo "failed")", "exit_code": $doc_rc, "message": "$doc_msg", "log_file": "$doc_log"},
+    {"id": "phpunit", "name": "PHPUnit 单元测试 (phpunit)", "pass": $unit_pass, "status": "$([ "$unit_pass" = "true" ] && echo "passed" || echo "failed")", "exit_code": $unit_rc, "message": "$unit_msg", "log_file": "$unit_log"},
+    {"id": "smoke", "name": "核心链路冒烟 (smoke)", "pass": $smoke_pass, "status": "$([ "$smoke_pass" = "true" ] && echo "passed" || echo "failed")", "exit_code": $smoke_rc, "message": "$smoke_msg", "log_file": "$smoke_log"},
+    {"id": "pc_types", "name": "PC 管理端类型检查 (pc_types)", "pass": $pc_pass, "status": "$([ "$pc_pass" = "true" ] && echo "passed" || echo "failed")", "exit_code": $pc_rc, "message": "$pc_msg", "log_file": "$pc_log"},
+    {"id": "mobile_types", "name": "移动端类型检查 (mobile_types)", "pass": $mob_pass, "status": "$([ "$mob_pass" = "true" ] && echo "passed" || echo "failed")", "exit_code": $mob_rc, "message": "$mob_msg", "log_file": "$mob_log"},
+    {"id": "package", "name": "制品构建规范 (package)", "pass": $pkg_pass, "status": "$pkg_status", "exit_code": $pkg_rc, "message": "$pkg_msg", "log_file": "$pkg_log"}
+  ]
+}
+EOF
+
+    # A previous pass must not certify edited source or a different release ZIP.
+    if [ -n "$py_cmd" ] && [ -f "$SCRIPT_DIR/scripts/verification_evidence.py" ]; then
+        if ! "$py_cmd" "$SCRIPT_DIR/scripts/verification_evidence.py" "$SCRIPT_DIR" "$report_file"; then
+            all_pass=0
+            echo '{"status":"fail","summary":{"all_passed":false},"error":"无法绑定当前验证证据","checks":[]}' > "$report_file"
+        fi
+    fi
+
+    if [ "$json_output" -eq 1 ]; then
+        cat "$report_file"
+    else
+        echo "=================================================="
+        echo " HwAdmin 全栈放行检查 (verify)"
+        echo "=================================================="
+        echo " [lint]         $([ "$lint_pass" = "true" ] && echo "✔" || echo "✘") $lint_msg ($lint_log)"
+        echo " [doctor]       $([ "$doc_pass" = "true" ] && echo "✔" || echo "✘") $doc_msg ($doc_log)"
+        echo " [phpunit]      $([ "$unit_pass" = "true" ] && echo "✔" || echo "✘") $unit_msg ($unit_log)"
+        echo " [smoke]        $([ "$smoke_pass" = "true" ] && echo "✔" || echo "✘") $smoke_msg ($smoke_log)"
+        echo " [pc_types]     $([ "$pc_pass" = "true" ] && echo "✔" || echo "✘") $pc_msg ($pc_log)"
+        echo " [mobile_types] $([ "$mob_pass" = "true" ] && echo "✔" || echo "✘") $mob_msg ($mob_log)"
+        echo " [package]      $([ "$pkg_pass" = "true" ] && echo "✔" || ([ "$pkg_status" = "skipped" ] && echo "!" || echo "✘")) $pkg_msg ($pkg_log)"
+        echo "--------------------------------------------------"
+        echo " 报告文件: $report_file"
+        if [ "$all_pass" -eq 1 ] && [ "$skipped_count" -eq 0 ]; then
+            echo "🎉 全部放行检查通过！系统可安全交付与部署。"
+        elif [ "$all_pass" -eq 1 ]; then
+            echo "⚠️ 已跳过部分项 (--skip-package)，其余检查通过（交付前仍需运行完整 verify）。"
+        else
+            echo "❌ 存在未通过的放行检查项，请检查上述日志。"
+        fi
+    fi
+
+    if [ "$all_pass" -ne 1 ]; then
+        return 1
+    fi
+    return 0
+}
+
+ACTION="${1:-help}"
+shift || true
+
+case "$ACTION" in
+    doctor)
+        if command -v php >/dev/null 2>&1 || command -v python3 >/dev/null 2>&1; then
+            bash "$SCRIPT_DIR/scripts/wsl-dev.sh" doctor "$@"
+        else
+            echo "❌ 尚未安装 PHP (>= 8.2.0)。"
+            echo "请通过包管理器安装，如 Ubuntu: sudo apt install -y php-cli php-mbstring php-sqlite3 php-curl"
+            exit 1
+        fi
+        ;;
+    start)
+        cmd_start "$@"
+        ;;
+    bootstrap)
+        cmd_bootstrap "$@"
+        ;;
+    dev)
+        bash "$SCRIPT_DIR/scripts/dev.sh" "$@"
+        ;;
+    stop)
+        bash "$SCRIPT_DIR/scripts/wsl-dev.sh" stop "$@"
+        ;;
+    inspect)
+        bash "$SCRIPT_DIR/scripts/wsl-dev.sh" inspect "$@"
+        ;;
+    verify)
+        cmd_verify "$@"
+        ;;
+    runtime)
+        py_cmd=""
+        if command -v python3 >/dev/null 2>&1; then
+            py_cmd="python3"
+        elif command -v python >/dev/null 2>&1; then
+            py_cmd="python"
+        else
+            echo "❌ 执行 runtime 工具需要 Python 3 环境" >&2
+            exit 1
+        fi
+        "$py_cmd" "$SCRIPT_DIR/scripts/hw-runtime.py" --project-root "$SCRIPT_DIR" "$@"
+        ;;
+    verify-runtime|runtime-verify)
+        verify_runtime_archive "$@"
+        ;;
+    package)
+        bash "$SCRIPT_DIR/scripts/pack-release.sh" "$@"
+        ;;
+    deploy)
+        if command -v python3 >/dev/null 2>&1; then
+            python3 "$SCRIPT_DIR/scripts/hw-deploy.py" "$@"
+        elif command -v python >/dev/null 2>&1; then
+            python "$SCRIPT_DIR/scripts/hw-deploy.py" "$@"
+        else
+            echo "❌ 执行部署工具需要 Python 3 环境"
+            exit 1
+        fi
+        ;;
+    help|--help|-h)
+        cmd_help
+        ;;
+    *)
+        echo "未知指令: $ACTION"
+        cmd_help
+        exit 1
+        ;;
+esac

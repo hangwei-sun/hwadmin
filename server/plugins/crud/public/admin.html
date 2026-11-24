@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HwAdmin 可视化 CRUD 代码生成器 - 免编译独立工作台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-light: #eef2ff;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --bg: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at 15% 15%, rgba(79, 70, 229, 0.15), transparent 40%),
+                  radial-gradient(circle at 85% 85%, rgba(16, 185, 129, 0.12), transparent 40%),
+                  var(--bg);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      border-bottom: 1px solid var(--card-border);
+      padding: 18px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-badge {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #4f46e5, #06b6d4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 20px;
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+    }
+    .brand-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .brand-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .status-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 9999px;
+      color: #34d399;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+    }
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 40px 24px;
+      width: 100%;
+      flex: 1;
+    }
+    .hero {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .hero h1 {
+      font-size: 38px;
+      font-weight: 800;
+      margin-bottom: 16px;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero p {
+      color: var(--text-muted);
+      font-size: 16px;
+      max-width: 720px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      backdrop-filter: blur(12px);
+      transition: all 0.25s ease;
+    }
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(79, 70, 229, 0.4);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+    }
+    .card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: rgba(79, 70, 229, 0.15);
+      border: 1px solid rgba(79, 70, 229, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      margin-bottom: 16px;
+    }
+    .card h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .card p {
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .api-playground {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 32px;
+      margin-top: 16px;
+    }
+    .section-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #4f46e5, #6366f1);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #4338ca, #4f46e5);
+      transform: translateY(-1px);
+    }
+    .code-box {
+      background: #090d16;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: #38bdf8;
+      max-height: 320px;
+      overflow-y: auto;
+      margin-top: 16px;
+      white-space: pre-wrap;
+    }
+    .footer {
+      border-top: 1px solid var(--card-border);
+      padding: 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <div class="logo-badge">⚡</div>
+      <div>
+        <div class="brand-title">HwAdmin CRUD Generator</div>
+        <div class="brand-subtitle">插件静态轻量管理视图 (Static View)</div>
+      </div>
+    </div>
+    <div class="status-tag">
+      <span class="status-dot"></span>
+      系统核心插件已装载 v1.0.0
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <h1>新一代可视化全栈智能 CRUD 引擎</h1>
+      <p>为现代化智能中后台设计，原生支持 MySQL 8.0+、PostgreSQL 16+ 与 SQLite 跨库自适应。零 SQL 在线建表、智能字段推导、全栈代码实时预览与权限菜单秒级就绪。</p>
+    </section>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-icon">🛠️</div>
+        <h3>零 SQL 可视化在线建表</h3>
+        <p>支持在浏览器界面添加字段名称、数据类型、精度与注释，自动建立自增主键与标准审计时间戳，建表后即刻进入 CRUD 生成。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🧠</div>
+        <h3>全自适应智能字段推导</h3>
+        <p>智能识别 ID、状态开关、缩略图、富文本、时间范围、数据字典与过滤模式，零配置即可自动推导最优控件与查询策略。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⚡</div>
+        <h3>全栈 4 件套代码实时预览</h3>
+        <p>动态生成 AdminController (含 CrudTrait)、UnixTimeModel、Validate 验证器与 Vue 3 + TypeScript 旗舰级页面源码。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🛡️</div>
+        <h3>权限树自动注册与安全撤回</h3>
+        <p>一键向系统 auth_rule 注册菜单与增删改查按钮权限；提供历史记录查看与全量一键撤回清理能力。</p>
+      </div>
+    </div>
+
+    <section class="api-playground">
+      <div class="section-title">
+        <span>🔌</span> 后端接口联调与数据表探测
+      </div>
+      <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
+        可通过当前页面直接测试 <code>/adminapi/plugin/crud/generator/tables</code> 接口连通性。
+      </p>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <button class="btn btn-primary" onclick="testTablesApi()">
+          <span>📡 立即拉取数据库表列表</span>
+        </button>
+        <span id="api-status" style="font-size: 13px; color: var(--text-muted);">准备就绪</span>
+      </div>
+      <pre class="code-box" id="json-result">// 点击上方按钮拉取当前数据库已注册表结构...</pre>
+    </section>
+  </main>
+
+  <footer class="footer">
+    HwAdmin 官方生态团队 · Apache-2.0 智能后台架构基座
+  </footer>
+
+  <script>
+    async function testTablesApi() {
+      const statusEl = document.getElementById('api-status');
+      const box = document.getElementById('json-result');
+      statusEl.textContent = '请求发送中...';
+      try {
+        const token = localStorage.getItem('token') || '';
+        const res = await fetch('/adminapi/plugin/crud/generator/tables', {
+          headers: {
+            'Authorization': 'Bearer ' + token,
+            'X-Token': token
+          }
+        });
+        const json = await res.json();
+        statusEl.textContent = '请求成功 HTTP ' + res.status;
+        box.textContent = JSON.stringify(json, null, 2);
+      } catch (err) {
+        statusEl.textContent = '请求异常: ' + err.message;
+        box.textContent = '// 请求失败：请确保后端服务正常运行并在已登录状态下调用接口。\n' + err.stack;
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+{
+  "name": "enterprise-admin",
+  "title": "业务管理后台起步模板",
+  "version": "1.0.0",
+  "description": "适用于企业综合业务系统后台，内置主从表协同（项目/任务）、文件附件管理、结构化数据导出、细粒度按钮级权限与数据归属 Service 层",
+  "author": "HwAdmin Team",
+  "modules": [
+    {
+      "id": "enterprise-admin",
+      "title": "企业协同后台",
+      "description": "项目/任务主从表协同、附件安全校验、结构化导出与 created_by 数据隔离"
+    }
+  ],
+  "entities": [
+    "enterprise_project",
+    "enterprise_task",
+    "enterprise_attachment"
+  ],
+  "entities_schema": {
+    "enterprise_project": {
+      "table": "enterprise_project",
+      "title": "企业项目主表",
+      "primary_key": "id",
+      "fields": [
+        { "name": "id", "type": "integer", "title": "ID", "primary": true },
+        { "name": "project_no", "type": "string", "title": "项目编号", "length": 32, "nullable": false },
+        { "name": "title", "type": "string", "title": "项目名称", "length": 128, "nullable": false },
+        { "name": "admin_id", "type": "integer", "title": "负责人管理员ID", "nullable": false, "default": 0 },
+        { "name": "created_by", "type": "integer", "title": "创建人管理员ID", "nullable": false, "default": 0 },
+        { "name": "priority", "type": "integer", "title": "优先级(1低,2中,3高,4紧急)", "nullable": false, "default": 2 },
+        { "name": "budget", "type": "decimal", "title": "项目预算", "precision": 12, "scale": 2, "nullable": false, "default": "0.00" },
+        { "name": "status", "type": "integer", "title": "项目状态(1进行中,2已完成,0已归档)", "nullable": false, "default": 1 },
+        { "name": "create_time", "type": "biginteger", "title": "创建时间", "nullable": false, "default": 0 },
+        { "name": "update_time", "type": "biginteger", "title": "更新时间", "nullable": false, "default": 0 }
+      ]
+    },
+    "enterprise_task": {
+      "table": "enterprise_task",
+      "title": "项目子任务明细",
+      "primary_key": "id",
+      "fields": [
+        { "name": "id", "type": "integer", "title": "ID", "primary": true },
+        { "name": "project_id", "type": "integer", "title": "关联项目ID", "nullable": false },
+        { "name": "title", "type": "string", "title": "任务标题", "length": 128, "nullable": false },
+        { "name": "assignee", "type": "string", "title": "执行人", "length": 64, "nullable": false, "default": "" },
+        { "name": "deadline", "type": "string", "title": "截止日期", "length": 16, "nullable": false, "default": "" },
+        { "name": "created_by", "type": "integer", "title": "创建人ID", "nullable": false, "default": 0 },
+        { "name": "status", "type": "integer", "title": "任务状态(0待办,1进行中,2已完成)", "nullable": false, "default": 0 },
+        { "name": "create_time", "type": "biginteger", "title": "创建时间", "nullable": false, "default": 0 },
+        { "name": "update_time", "type": "biginteger", "title": "更新时间", "nullable": false, "default": 0 }
+      ]
+    },
+    "enterprise_attachment": {
+      "table": "enterprise_attachment",
+      "title": "业务附件记录",
+      "primary_key": "id",
+      "fields": [
+        { "name": "id", "type": "integer", "title": "ID", "primary": true },
+        { "name": "target_type", "type": "string", "title": "关联主体类型(project|task)", "length": 32, "nullable": false },
+        { "name": "target_id", "type": "integer", "title": "主体ID", "nullable": false },
+        { "name": "file_name", "type": "string", "title": "文件原名", "length": 255, "nullable": false },
+        { "name": "file_url", "type": "string", "title": "文件URL", "length": 500, "nullable": false },
+        { "name": "file_size", "type": "integer", "title": "文件大小(字节)", "nullable": false, "default": 0 },
+        { "name": "file_ext", "type": "string", "title": "文件后缀", "length": 16, "nullable": false, "default": "" },
+        { "name": "admin_id", "type": "integer", "title": "上传管理员ID", "nullable": false, "default": 0 },
+        { "name": "created_by", "type": "integer", "title": "创建人ID", "nullable": false, "default": 0 },
+        { "name": "create_time", "type": "biginteger", "title": "上传时间", "nullable": false, "default": 0 }
+      ]
+    }
+  },
+  "menus": [
+    {
+      "type": "dir",
+      "name": "enterprise",
+      "title": "企业协同管理",
+      "path": "enterprise",
+      "icon": "briefcase-4-line",
+      "weight": 560,
+      "children": [
+        {
+          "type": "menu",
+          "name": "enterprise/project",
+          "title": "项目与任务协同",
+          "path": "project",
+          "component": "@/views/enterprise/project/index.vue",
+          "icon": "projector-line",
+          "weight": 100,
+          "children": [
+            { "type": "button", "name": "enterprise/project/index", "title": "查看" },
+            { "type": "button", "name": "enterprise/project/read", "title": "详情" },
+            { "type": "button", "name": "enterprise/project/detail", "title": "主从详情" },
+            { "type": "button", "name": "enterprise/project/add", "title": "新增" },
+            { "type": "button", "name": "enterprise/project/createWithTasks", "title": "主从协同新增" },
+            { "type": "button", "name": "enterprise/project/edit", "title": "编辑" },
+            { "type": "button", "name": "enterprise/project/del", "title": "删除" },
+            { "type": "button", "name": "enterprise/project/addAttachment", "title": "上传附件" },
+            { "type": "button", "name": "enterprise/project/export", "title": "导出数据" }
+          ]
+        },
+        {
+          "type": "menu",
+          "name": "enterprise/task",
+          "title": "任务明细管理",
+          "path": "task",
+          "component": "@/views/enterprise/project/index.vue",
+          "icon": "task-line",
+          "weight": 90,
+          "children": [
+            { "type": "button", "name": "enterprise/task/index", "title": "查看" },
+            { "type": "button", "name": "enterprise/task/add", "title": "新增" },
+            { "type": "button", "name": "enterprise/task/edit", "title": "编辑" },
+            { "type": "button", "name": "enterprise/task/del", "title": "删除" }
+          ]
+        }
+      ]
+    }
+  ],
+  "migrations": [
+    "20261115100003_create_enterprise_admin_tables.php"
+  ],
+  "files": [
+    {
+      "source": "backend/app/common/model/EnterpriseProject.php",
+      "target": "server/app/common/model/EnterpriseProject.php"
+    },
+    {
+      "source": "backend/app/common/model/EnterpriseTask.php",
+      "target": "server/app/common/model/EnterpriseTask.php"
+    },
+    {
+      "source": "backend/app/common/model/EnterpriseAttachment.php",
+      "target": "server/app/common/model/EnterpriseAttachment.php"
+    },
+    {
+      "source": "backend/app/common/service/EnterpriseProjectService.php",
+      "target": "server/app/common/service/EnterpriseProjectService.php"
+    },
+    {
+      "source": "backend/app/adminapi/controller/enterprise/Project.php",
+      "target": "server/app/adminapi/controller/enterprise/Project.php"
+    },
+    {
+      "source": "backend/app/adminapi/controller/enterprise/Task.php",
+      "target": "server/app/adminapi/controller/enterprise/Task.php"
+    },
+    {
+      "source": "frontend/views/enterprise/project/index.vue",
+      "target": "admin-ui/src/views/enterprise/project/index.vue"
+    }
+  ]
+}

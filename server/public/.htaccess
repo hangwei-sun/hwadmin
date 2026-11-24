@@ -1,0 +1,18 @@
+<IfModule mod_rewrite.c>
+  Options +FollowSymlinks -Multiviews
+  RewriteEngine On
+
+  # 禁止访问任何以点开头的隐藏文件及配置/备份/日志/锁文件
+  RewriteRule (^|/)\. - [F,NC,L]
+  RewriteRule \.(env|lock|token|sqlite|sql|bak|inc|sh|log)$ - [F,NC,L]
+
+  # 拦截已确认含模板授权限制的历史构建。
+  RewriteRule ^admin/static/js/(index-(B90ludh5|DRB4f58U|CB1tkGEK|DeU_C10w)|vsv-icon-(CpK_sqA-|ZopMm1A_|Bm9aixqR|CkhPEWur))\.js$ - [F,NC,L]
+
+  RewriteRule ^admin/?$ index.php?s=/admin [QSA,PT,L]
+  RewriteRule ^admin/index\.html$ index.php?s=/admin [QSA,PT,L]
+
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^(.*)$ index.php?s=$1 [QSA,PT,L]
+</IfModule>

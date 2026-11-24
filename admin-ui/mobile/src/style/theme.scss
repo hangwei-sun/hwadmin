@@ -1,0 +1,16 @@
+// Apply to root-portal too, so dialogs and popups share the brand palette.
+page,
+.wot-theme-light,
+.wd-root-portal,
+.wot-theme-light .wd-root-portal {
+  --hwadmin-primary-1: #e9f6f2;
+  --hwadmin-primary-2: #d0eee5;
+  --hwadmin-primary-3: #a6dfd0;
+  --hwadmin-primary-4: #71c6b2;
+  --hwadmin-primary-5: #32a18e;
+  --hwadmin-primary-6: #087f70;
+  --hwadmin-primary-7: #066858;
+  --hwadmin-primary-8: #075347;
+  --hwadmin-primary-9: #074539;
+  --hwadmin-primary-10: #06392f;
+}

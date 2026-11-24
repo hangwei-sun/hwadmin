@@ -1,0 +1,21 @@
+<?php
+declare(strict_types=1);
+
+namespace plugins\{{name}}\controller\admin;
+
+use core\base\AdminController;
+
+/**
+ * 后台接口：GET /adminapi/plugin/{{name}}/index/index
+ * 权限节点：plugin/{{name}}/index/index
+ */
+class Index extends AdminController
+{
+    public function index(): void
+    {
+        $this->success([
+            'plugin'  => '{{name}}',
+            'welcome' => $this->app->make(\core\plugin\PluginManager::class)->getConfig('{{name}}')['welcome'] ?? '',
+        ]);
+    }
+}

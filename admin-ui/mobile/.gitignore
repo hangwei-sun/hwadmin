@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+*.timestamp-*.mjs
+.env
+.env.*.local
+src/pages.json
+src/manifest.json
+src/types/auto-import.d.ts
+src/types/uni-pages.d.ts
+src/types/uni-layouts.d.ts

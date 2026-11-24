@@ -1,0 +1,291 @@
+name: HwAdmin CI & Multi-DB Matrix
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master", "develop" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-matrix:
+    name: PHP ${{ matrix.php }} | ${{ matrix.db }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [ "8.2", "8.3" ]
+        db: [ "mysql", "postgres", "sqlite" ]
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: hwadmin_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: hwadmin_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: root
+        ports:
+          - 5432:5432
+        options: --health-cmd="pg_isready" --health-interval=10s --health-timeout=5s --health-retries=3
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 PHP 运行环境与核心扩展
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo, pdo_mysql, pdo_pgsql, pdo_sqlite, redis, mbstring, json, curl, zip, gd, intl, bcmath
+          tools: composer:v2
+
+      - name: 验证 Composer 配置与规范
+        run: |
+          cd server
+          composer validate --strict
+
+      - name: 缓存 Composer 依赖包
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ matrix.php }}-${{ hashFiles('server/composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-
+
+      - name: 安装 Composer 依赖
+        run: |
+          cd server
+          composer install --prefer-dist --no-progress --no-interaction
+
+      - name: 全量 PHP 语法 Lint 检查 (php -l)
+        run: |
+          find server -type f -name "*.php" -not -path "*/vendor/*" -print0 | xargs -0 -n1 -P4 php -l >/dev/null
+          echo "PHP Lint passed!"
+
+      - name: 依赖安全漏洞审计 (Composer Audit)
+        run: |
+          cd server
+          composer audit
+
+      - name: 运行 PHPUnit 单元与集成测试套件
+        run: |
+          cd server
+          composer test
+
+      - name: 部署制品与备份恢复边界回归
+        run: python3 -m unittest discover -s scripts/tests -v
+
+      - name: 执行测试套件与数据库迁移 (按当前矩阵执行)
+        run: |
+          cd server
+          mkdir -p runtime database
+
+          if [ "${{ matrix.db }}" = "sqlite" ]; then
+            echo "Running SQLite smoke test suite..."
+            chmod +x tests/smoke.sh
+            bash tests/smoke.sh
+            php think hw:inspect --json > /dev/null
+            php think hw:crud --table=hw_admin --dry-run
+          elif [ "${{ matrix.db }}" = "mysql" ]; then
+            echo "Running MySQL 8.0 validation..."
+            printf "%s\n" \
+              "APP_DEBUG=true" \
+              "DB_DRIVER=mysql" \
+              "DB_HOST=127.0.0.1" \
+              "DB_PORT=3306" \
+              "DB_NAME=hwadmin_test" \
+              "DB_USER=root" \
+              "DB_PASS=root" \
+              "DB_PREFIX=hw_" \
+              "CACHE_DRIVER=redis" \
+              "REDIS_HOST=127.0.0.1" \
+              "REDIS_PORT=6379" > .env
+            php think migrate:run
+            php think migrate:rollback -t 0
+            php think migrate:run
+            php think hw:install --username=admin --password=Admin123456! --db-driver=mysql --db-host=127.0.0.1 --db-port=3306 --db-name=hwadmin_test --db-user=root --db-pass=root --force
+            php think hw:inspect --json > /dev/null
+            php think hw:crud --table=hw_admin --dry-run
+            php -S 127.0.0.1:18080 -t public public/router.php >/dev/null 2>&1 &
+            CI_HTTP_PID=$!
+            trap 'kill "$CI_HTTP_PID" 2>/dev/null || true' EXIT
+            for i in $(seq 1 25); do
+              if curl -sS http://127.0.0.1:18080/api/index/ping >/dev/null 2>&1; then
+                break
+              fi
+              sleep 0.2
+            done
+            PING_RES=$(curl -fsS http://127.0.0.1:18080/api/index/ping)
+            echo "$PING_RES" | grep -q '"code":1'
+            UNAUTH_RES=$(curl -sS http://127.0.0.1:18080/adminapi/index/info)
+            echo "$UNAUTH_RES" | grep -q '"code":401'
+            LOGIN_RES=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{"username":"admin","password":"Admin123456!","captcha_key":"__SMOKE_KEY__","captcha_code":"__SMOKE_CODE__"}' http://127.0.0.1:18080/adminapi/index/login)
+            echo "$LOGIN_RES" | grep -q '"token"'
+            TOKEN=$(echo "$LOGIN_RES" | sed -E 's/.*"token":"([a-f0-9]+)".*/\1/')
+            INFO_RES=$(curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18080/adminapi/index/info)
+            echo "$INFO_RES" | grep -q '"permissions":\["\*"\]'
+            MENUS_RES=$(curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18080/adminapi/index/menus)
+            echo "$MENUS_RES" | grep -q '"component":"Layout"'
+            kill "$CI_HTTP_PID" 2>/dev/null || true
+            trap - EXIT
+            echo "MySQL validation passed!"
+          elif [ "${{ matrix.db }}" = "postgres" ]; then
+            echo "Running PostgreSQL 16 validation..."
+            printf "%s\n" \
+              "APP_DEBUG=true" \
+              "DB_DRIVER=pgsql" \
+              "DB_HOST=127.0.0.1" \
+              "DB_PORT=5432" \
+              "DB_NAME=hwadmin_test" \
+              "DB_USER=postgres" \
+              "DB_PASS=root" \
+              "DB_PREFIX=hw_" \
+              "CACHE_DRIVER=redis" \
+              "REDIS_HOST=127.0.0.1" \
+              "REDIS_PORT=6379" > .env
+            php think migrate:run
+            php think migrate:rollback -t 0
+            php think migrate:run
+            php think hw:install --username=admin --password=Admin123456! --db-driver=pgsql --db-host=127.0.0.1 --db-port=5432 --db-name=hwadmin_test --db-user=postgres --db-pass=root --force
+            php think hw:inspect --json > /dev/null
+            php think hw:crud --table=hw_admin --dry-run
+            php -S 127.0.0.1:18080 -t public public/router.php >/dev/null 2>&1 &
+            CI_HTTP_PID=$!
+            trap 'kill "$CI_HTTP_PID" 2>/dev/null || true' EXIT
+            for i in $(seq 1 25); do
+              if curl -sS http://127.0.0.1:18080/api/index/ping >/dev/null 2>&1; then
+                break
+              fi
+              sleep 0.2
+            done
+            PING_RES=$(curl -fsS http://127.0.0.1:18080/api/index/ping)
+            echo "$PING_RES" | grep -q '"code":1'
+            UNAUTH_RES=$(curl -sS http://127.0.0.1:18080/adminapi/index/info)
+            echo "$UNAUTH_RES" | grep -q '"code":401'
+            LOGIN_RES=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{"username":"admin","password":"Admin123456!","captcha_key":"__SMOKE_KEY__","captcha_code":"__SMOKE_CODE__"}' http://127.0.0.1:18080/adminapi/index/login)
+            echo "$LOGIN_RES" | grep -q '"token"'
+            TOKEN=$(echo "$LOGIN_RES" | sed -E 's/.*"token":"([a-f0-9]+)".*/\1/')
+            INFO_RES=$(curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18080/adminapi/index/info)
+            echo "$INFO_RES" | grep -q '"permissions":\["\*"\]'
+            MENUS_RES=$(curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18080/adminapi/index/menus)
+            echo "$MENUS_RES" | grep -q '"component":"Layout"'
+            kill "$CI_HTTP_PID" 2>/dev/null || true
+            trap - EXIT
+            echo "PostgreSQL validation passed!"
+          fi
+
+  package-artifacts:
+    name: Package & Artifact Integrity Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 设置 Python 运行环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 构建并校验统一完整发行包
+        run: |
+          python3 scripts/build-release.py --mode=unified
+          test -f release/hwadmin-v*.zip
+          test -f release/hwadmin-v*.zip.sha256
+
+  frontend-build:
+    name: Frontend Vue 3 + TS Lint & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js 运行时
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - name: 安装前端依赖
+        run: |
+          cd admin-ui
+          pnpm install --frozen-lockfile
+
+      - name: 前端 TypeScript 类型检查
+        run: |
+          cd admin-ui
+          pnpm vue-tsc --noEmit
+
+      - name: 前端核心运行时单元测试
+        run: |
+          cd admin-ui
+          pnpm test:core
+
+      - name: 前端构建打包
+        run: |
+          cd admin-ui
+          pnpm build
+
+      - name: 前端安全依赖审计 (无高危/阻断性漏洞)
+        run: |
+          cd admin-ui
+          pnpm audit --prod --audit-level high
+
+  mobile-build:
+    name: Mobile Wot UI V2 | WeChat + H5
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin-ui/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - name: 安装移动端锁定依赖
+        run: pnpm install --frozen-lockfile
+      - name: 类型、请求契约与双端构建
+        run: pnpm check
+
+  desktop-build:
+    name: Desktop Tauri 2 | Windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: admin-ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: admin-ui/src-tauri -> target
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm vue-tsc --noEmit
+      - run: pnpm test:desktop
+      - name: Build embedded frontend and Windows executable
+        run: pnpm desktop:build --no-bundle

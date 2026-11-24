@@ -1,0 +1,139 @@
+{
+  "name": "booking-system",
+  "title": "预约系统起步模板（网站与小程序）",
+  "version": "1.0.0",
+  "description": "适用于多时段、多服务项目的在线预约系统，内置服务项目管理、时段配额规划、并发防冲突锁、状态机生命周期（待处理/已确认/已完成/已取消）与会员隔离",
+  "author": "HwAdmin Team",
+  "modules": [
+    {
+      "id": "booking-system",
+      "title": "在线预约系统",
+      "description": "服务项目管理、动态时段配额、并发冲突锁、我的预约与取消释放"
+    }
+  ],
+  "entities": [
+    "booking_service",
+    "booking_slot",
+    "booking_order"
+  ],
+  "entities_schema": {
+    "booking_service": {
+      "table": "booking_service",
+      "title": "预约服务项目",
+      "primary_key": "id",
+      "fields": [
+        { "name": "id", "type": "integer", "title": "ID", "primary": true },
+        { "name": "title", "type": "string", "title": "服务项目名称", "length": 128, "nullable": false },
+        { "name": "cover", "type": "string", "title": "服务封面图", "length": 255, "nullable": false, "default": "" },
+        { "name": "duration", "type": "integer", "title": "服务时长(分钟)", "nullable": false, "default": 60 },
+        { "name": "price", "type": "decimal", "title": "服务价格", "precision": 10, "scale": 2, "nullable": false, "default": "0.00" },
+        { "name": "status", "type": "integer", "title": "状态(1上架,0下架)", "nullable": false, "default": 1 },
+        { "name": "create_time", "type": "biginteger", "title": "创建时间", "nullable": false, "default": 0 },
+        { "name": "update_time", "type": "biginteger", "title": "更新时间", "nullable": false, "default": 0 }
+      ]
+    },
+    "booking_slot": {
+      "table": "booking_slot",
+      "title": "预约时段规划",
+      "primary_key": "id",
+      "fields": [
+        { "name": "id", "type": "integer", "title": "ID", "primary": true },
+        { "name": "service_id", "type": "integer", "title": "关联服务项目ID", "nullable": false },
+        { "name": "date", "type": "string", "title": "预约日期", "length": 16, "nullable": false },
+        { "name": "start_time", "type": "string", "title": "开始时间", "length": 10, "nullable": false },
+        { "name": "end_time", "type": "string", "title": "结束时间", "length": 10, "nullable": false },
+        { "name": "capacity", "type": "integer", "title": "时段总配额", "nullable": false, "default": 1 },
+        { "name": "booked_count", "type": "integer", "title": "已预约人数", "nullable": false, "default": 0 },
+        { "name": "status", "type": "integer", "title": "状态(1可约,0已满或关闭)", "nullable": false, "default": 1 },
+        { "name": "create_time", "type": "biginteger", "title": "创建时间", "nullable": false, "default": 0 },
+        { "name": "update_time", "type": "biginteger", "title": "更新时间", "nullable": false, "default": 0 }
+      ]
+    },
+    "booking_order": {
+      "table": "booking_order",
+      "title": "预约订单",
+      "primary_key": "id",
+      "fields": [
+        { "name": "id", "type": "integer", "title": "ID", "primary": true },
+        { "name": "order_no", "type": "string", "title": "预约流水号", "length": 32, "nullable": false },
+        { "name": "user_id", "type": "integer", "title": "会员用户ID", "nullable": false },
+        { "name": "service_id", "type": "integer", "title": "服务项目ID", "nullable": false },
+        { "name": "slot_id", "type": "integer", "title": "时段ID", "nullable": false },
+        { "name": "booking_date", "type": "string", "title": "预约日期", "length": 16, "nullable": false },
+        { "name": "contact_name", "type": "string", "title": "联系人姓名", "length": 64, "nullable": false },
+        { "name": "contact_mobile", "type": "string", "title": "联系人电话", "length": 32, "nullable": false },
+        { "name": "status", "type": "integer", "title": "状态(0待处理,1已确认,2已完成,3已取消)", "nullable": false, "default": 0 },
+        { "name": "remark", "type": "string", "title": "用户备注", "length": 255, "nullable": false, "default": "" },
+        { "name": "create_time", "type": "biginteger", "title": "下单时间", "nullable": false, "default": 0 },
+        { "name": "update_time", "type": "biginteger", "title": "更新时间", "nullable": false, "default": 0 }
+      ]
+    }
+  },
+  "menus": [
+    {
+      "type": "dir",
+      "name": "booking",
+      "title": "预约系统管理",
+      "path": "booking",
+      "icon": "calendar-check-line",
+      "weight": 570,
+      "children": [
+        {
+          "type": "menu",
+          "name": "booking/order",
+          "title": "预约订单管理",
+          "path": "order",
+          "component": "@/views/booking/order/index.vue",
+          "icon": "calendar-todo-line",
+          "weight": 100,
+          "children": [
+            { "type": "button", "name": "booking/order/index", "title": "查看" },
+            { "type": "button", "name": "booking/order/read", "title": "详情" },
+            { "type": "button", "name": "booking/order/edit", "title": "编辑" },
+            { "type": "button", "name": "booking/order/del", "title": "删除" },
+            { "type": "button", "name": "booking/order/transition", "title": "状态流转" },
+            { "type": "button", "name": "booking/order/saveService", "title": "保存服务" },
+            { "type": "button", "name": "booking/order/saveSlot", "title": "保存时段" }
+          ]
+        }
+      ]
+    }
+  ],
+  "migrations": [
+    "20261115100002_create_booking_system_tables.php"
+  ],
+  "files": [
+    {
+      "source": "backend/app/common/model/BookingServiceItem.php",
+      "target": "server/app/common/model/BookingServiceItem.php"
+    },
+    {
+      "source": "backend/app/common/model/BookingSlot.php",
+      "target": "server/app/common/model/BookingSlot.php"
+    },
+    {
+      "source": "backend/app/common/model/BookingOrder.php",
+      "target": "server/app/common/model/BookingOrder.php"
+    },
+    {
+      "source": "backend/app/common/service/BookingService.php",
+      "target": "server/app/common/service/BookingService.php"
+    },
+    {
+      "source": "backend/app/adminapi/controller/booking/Order.php",
+      "target": "server/app/adminapi/controller/booking/Order.php"
+    },
+    {
+      "source": "backend/app/api/controller/Booking.php",
+      "target": "server/app/api/controller/Booking.php"
+    },
+    {
+      "source": "frontend/views/booking/order/index.vue",
+      "target": "admin-ui/src/views/booking/order/index.vue"
+    },
+    {
+      "source": "mobile/pages/booking/index.vue",
+      "target": "admin-ui/mobile/src/pages/booking/index.vue"
+    }
+  ]
+}

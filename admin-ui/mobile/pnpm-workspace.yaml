@@ -1,0 +1,9 @@
+packages:
+  - .
+allowBuilds:
+  esbuild: true
+  '@parcel/watcher': false
+  vue-demi: false
+  '@uni-helper/unocss-preset-uni': true
+  core-js: false
+  core-js-pure: false

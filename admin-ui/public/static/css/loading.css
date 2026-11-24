@@ -1,0 +1,52 @@
+/*! build: HwAdmin */
+#app > .hw-loading-splash {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #eaf2fd 0%, #e7f0fe 100%);
+  padding: 16px;
+  animation: hwSplashFade 0.28s ease-out both;
+}
+
+#app > .hw-loading-splash > .hw-loading-img {
+  display: block;
+  width: min(880px, 92vw);
+  max-height: 82vh;
+  height: auto;
+  object-fit: contain;
+  border-radius: 16px;
+  box-shadow: 0 20px 50px -20px rgba(20, 44, 89, 0.16);
+}
+
+#app > .hw-loading-splash::after {
+  content: '';
+  display: block;
+  width: min(220px, 48vw);
+  height: 3px;
+  margin-top: 18px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(61, 115, 241, 0.12) 0%, #3d73f1 40%, #54c6af 70%, rgba(61, 115, 241, 0.12) 100%);
+  background-size: 200% 100%;
+  animation: hwProgressShimmer 1.35s ease-in-out infinite;
+}
+
+@keyframes hwSplashFade {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes hwProgressShimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}

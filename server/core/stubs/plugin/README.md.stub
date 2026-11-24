@@ -1,0 +1,24 @@
+# {{Name}} 插件
+
+## 目录
+
+```text
+{{name}}/
+├─ plugin.json              清单：标识、版本、依赖、菜单、配置项
+├─ Plugin.php               主类：生命周期、事件监听
+├─ controller/admin/        后台接口 → /adminapi/plugin/{{name}}/{控制器}/{操作}
+├─ controller/api/          前台接口 → /api/plugin/{{name}}/{控制器}/{操作}
+├─ database/migrations/     数据表迁移（阶段 2 自动执行）
+├─ public/                  静态资源，启用时发布到 public/plugins/{{name}}/
+└─ admin-ui/                后台页面源码（阶段 3：构建后输出到 public/admin/）
+```
+
+## 开发
+
+```bash
+php think hw:plugin install {{name}}
+php think hw:plugin disable {{name}}
+php think hw:plugin uninstall {{name}}
+```
+
+规范见仓库 `docs/plugin/插件系统规范.md`。

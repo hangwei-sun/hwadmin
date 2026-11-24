@@ -1,0 +1,249 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hwadmin.org/schemas/hw.project.schema.json",
+  "title": "HwAdmin Project Descriptor Schema",
+  "description": "应用描述契约文件，指导 AI 智能体完成业务需求建模、跨端代码生成与部署规划",
+  "type": "object",
+  "required": [
+    "app_id",
+    "app_name",
+    "app_version",
+    "framework_version",
+    "clients"
+  ],
+  "properties": {
+    "app_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$",
+      "description": "应用全局唯一标识"
+    },
+    "app_name": {
+      "type": "string",
+      "description": "应用显示名称"
+    },
+    "app_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+.*$",
+      "description": "业务应用语义化版本号"
+    },
+    "framework_version": {
+      "type": "string",
+      "description": "依赖的 HwAdmin 框架基座版本号"
+    },
+    "brand": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "slogan": { "type": "string" },
+        "logo": { "type": "string" },
+        "copyright": { "type": "string" }
+      }
+    },
+    "clients": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["admin-pc", "mobile-h5", "mobile-mp-weixin", "desktop-tauri"]
+      },
+      "description": "项目启用的目标客户端"
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "entities": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["table", "title", "fields"],
+        "properties": {
+          "table": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$"
+          },
+          "title": { "type": "string" },
+          "primary_key": {
+            "type": "string",
+            "default": "id"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "type"],
+              "properties": {
+                "name": { "type": "string" },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "string",
+                    "integer",
+                    "biginteger",
+                    "smallinteger",
+                    "boolean",
+                    "decimal",
+                    "text",
+                    "longtext",
+                    "json",
+                    "datetime",
+                    "date",
+                    "timestamp",
+                    "float"
+                  ]
+                },
+                "title": { "type": "string" },
+                "length": { "type": "integer" },
+                "precision": { "type": "integer" },
+                "scale": { "type": "integer" },
+                "nullable": { "type": "boolean", "default": false },
+                "default": {},
+                "comment": { "type": "string" },
+                "primary": { "type": "boolean", "default": false },
+                "unique": { "type": "boolean", "default": false },
+                "index": { "type": "boolean", "default": false },
+                "searchable": { "type": "boolean", "default": false }
+              }
+            }
+          },
+          "indexes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["columns"],
+              "properties": {
+                "name": { "type": "string" },
+                "columns": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "unique": { "type": "boolean", "default": false }
+              }
+            }
+          },
+          "public_fields": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "可选：声明前台公开只读白名单列（覆盖默认隐私过滤启发式，如放开 reply/is_top 等只展不收字段）"
+          },
+          "submit_fields": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "可选：声明前台访客可提交白名单列（如放开 contact/email 等只收不展字段）"
+          }
+        }
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "type", "foreign_key"],
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["belongs_to", "has_one", "has_many", "many_to_many"]
+          },
+          "foreign_key": { "type": "string" }
+        }
+      }
+    },
+    "state_machines": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["entity", "field", "states", "transitions"],
+        "properties": {
+          "entity": { "type": "string" },
+          "field": { "type": "string" },
+          "states": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          },
+          "transitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["from", "to", "action"],
+              "properties": {
+                "from": { "type": "string" },
+                "to": { "type": "string" },
+                "action": { "type": "string" },
+                "title": { "type": "string" },
+                "roles": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "title"],
+        "properties": {
+          "name": { "type": "string" },
+          "title": { "type": "string" },
+          "parent": { "type": "string" }
+        }
+      }
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "required": { "type": "boolean", "default": false }
+        }
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "enum": ["docker", "bt-panel", "linux-fpm"]
+        },
+        "database": {
+          "type": "string",
+          "enum": ["sqlite", "mysql", "pgsql"]
+        },
+        "domain": { "type": "string" },
+        "admin_path": { "type": "string", "default": "/admin" }
+      }
+    },
+    "external_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "title", "category"],
+        "properties": {
+          "key": { "type": "string" },
+          "title": { "type": "string" },
+          "category": {
+            "type": "string",
+            "enum": ["server", "domain", "wechat", "storage", "sms", "pay"]
+          },
+          "required": { "type": "boolean", "default": false },
+          "env_mapping": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+<?php
+declare(strict_types=1);
+
+namespace plugins\{{name}};
+
+/**
+ * {{Name}} 插件主类
+ * 生命周期与事件说明见 docs/plugin/插件系统规范.md
+ */
+class Plugin extends \core\plugin\Plugin
+{
+    /**
+     * 事件监听：['事件名' => [监听类或闭包]]
+     */
+    public function events(): array
+    {
+        return [];
+    }
+
+    public function install(): void
+    {
+        // 建表请使用插件 database/migrations（阶段 2 支持自动执行），此处可做初始化数据
+    }
+
+    public function uninstall(): void
+    {
+    }
+}

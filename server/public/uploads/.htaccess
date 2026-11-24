@@ -1,0 +1,19 @@
+# HwAdmin Uploads Directory Protection (S08)
+# 禁止执行任何脚本文件并禁止目录浏览
+
+<FilesMatch "\.(php\d*|phtml|phar|sh|pl|cgi|asp|aspx|py|rb|jsp|htaccess|ini)$">
+    Order Deny,Allow
+    Deny from all
+</FilesMatch>
+
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+
+Options -ExecCGI -Indexes

@@ -1,0 +1,454 @@
+{
+    "$schema": "./server/core/support/hw.project.schema.json",
+    "app_id": "hwadmin-starter",
+    "app_name": "HwAdmin 业务应用",
+    "app_version": "1.0.0",
+    "framework_version": "1.6.1",
+    "brand": {
+        "name": "HwAdmin",
+        "slogan": "让你的 AI 智能体读懂并快速创造应用",
+        "logo": "/static/images/logo.png",
+        "copyright": "© 2026 HwAdmin All Rights Reserved."
+    },
+    "clients": [
+        "admin-pc",
+        "mobile-h5",
+        "mobile-mp-weixin"
+    ],
+    "modules": [
+        {
+            "id": "system",
+            "title": "系统管理",
+            "description": "用户、权限、字典、系统配置与插件管理"
+        },
+        {
+            "id": "business",
+            "title": "业务系统",
+            "description": "业务模型、预约、官网与内容服务"
+        },
+        {
+            "id": "corporate-site",
+            "title": "企业官网门户",
+            "description": "品牌官网展示、产品/文章独立详情、页面级 SEO/Sitemap/Robots 与在线询盘管理"
+        }
+    ],
+    "entities": {
+        "demo_item": {
+            "table": "demo_item",
+            "title": "示例条目",
+            "primary_key": "id",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "integer",
+                    "title": "主键ID",
+                    "primary": true
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "title": "条目标题",
+                    "length": 128,
+                    "nullable": false,
+                    "default": "",
+                    "searchable": true
+                },
+                {
+                    "name": "content",
+                    "type": "text",
+                    "title": "详情内容",
+                    "nullable": true
+                },
+                {
+                    "name": "amount",
+                    "type": "decimal",
+                    "title": "结算金额",
+                    "precision": 10,
+                    "scale": 2,
+                    "nullable": false,
+                    "default": "0.00"
+                },
+                {
+                    "name": "status",
+                    "type": "integer",
+                    "title": "状态(0禁用,1启用)",
+                    "nullable": false,
+                    "default": 1
+                },
+                {
+                    "name": "create_time",
+                    "type": "biginteger",
+                    "title": "创建时间",
+                    "nullable": false,
+                    "default": 0
+                },
+                {
+                    "name": "update_time",
+                    "type": "biginteger",
+                    "title": "更新时间",
+                    "nullable": false,
+                    "default": 0
+                }
+            ],
+            "indexes": [
+                {
+                    "name": "idx_demo_item_title",
+                    "columns": [
+                        "title"
+                    ],
+                    "unique": false
+                }
+            ]
+        },
+        "site_category": {
+            "table": "site_category",
+            "title": "官网栏目分类",
+            "primary_key": "id",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "integer",
+                    "title": "ID",
+                    "primary": true
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "title": "栏目名称",
+                    "length": 64,
+                    "nullable": false
+                },
+                {
+                    "name": "slug",
+                    "type": "string",
+                    "title": "URL别名",
+                    "length": 64,
+                    "nullable": false,
+                    "default": ""
+                },
+                {
+                    "name": "sort",
+                    "type": "integer",
+                    "title": "排序权重",
+                    "nullable": false,
+                    "default": 0
+                },
+                {
+                    "name": "status",
+                    "type": "integer",
+                    "title": "状态",
+                    "nullable": false,
+                    "default": 1
+                },
+                {
+                    "name": "create_time",
+                    "type": "biginteger",
+                    "title": "创建时间",
+                    "nullable": false,
+                    "default": 0
+                },
+                {
+                    "name": "update_time",
+                    "type": "biginteger",
+                    "title": "更新时间",
+                    "nullable": false,
+                    "default": 0
+                }
+            ]
+        },
+        "site_article": {
+            "table": "site_article",
+            "title": "官网文章与产品",
+            "primary_key": "id",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "integer",
+                    "title": "ID",
+                    "primary": true
+                },
+                {
+                    "name": "category_id",
+                    "type": "integer",
+                    "title": "栏目分类ID",
+                    "nullable": false,
+                    "default": 0
+                },
+                {
+                    "name": "type",
+                    "type": "string",
+                    "title": "内容类型(article|product)",
+                    "length": 32,
+                    "nullable": false,
+                    "default": "article"
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "title": "标题",
+                    "length": 255,
+                    "nullable": false
+                },
+                {
+                    "name": "slug",
+                    "type": "string",
+                    "title": "URL别名",
+                    "length": 128,
+                    "nullable": false,
+                    "default": ""
+                },
+                {
+                    "name": "summary",
+                    "type": "string",
+                    "title": "摘要",
+                    "length": 500,
+                    "nullable": false,
+                    "default": ""
+                },
+                {
+                    "name": "content",
+                    "type": "text",
+                    "title": "正文详情",
+                    "nullable": true
+                },
+                {
+                    "name": "cover_image",
+                    "type": "string",
+                    "title": "封面图",
+                    "length": 255,
+                    "nullable": false,
+                    "default": ""
+                },
+                {
+                    "name": "price",
+                    "type": "decimal",
+                    "title": "产品价格",
+                    "precision": 10,
+                    "scale": 2,
+                    "nullable": false,
+                    "default": "0.00"
+                },
+                {
+                    "name": "views",
+                    "type": "integer",
+                    "title": "浏览量",
+                    "nullable": false,
+                    "default": 0
+                },
+                {
+                    "name": "seo_title",
+                    "type": "string",
+                    "title": "SEO标题",
+                    "length": 255,
+                    "nullable": false,
+                    "default": ""
+                },
+                {
+                    "name": "seo_keywords",
+                    "type": "string",
+                    "title": "SEO关键词",
+                    "length": 255,
+                    "nullable": false,
+                    "default": ""
+                },
+                {
+                    "name": "seo_description",
+                    "type": "string",
+                    "title": "SEO描述",
+                    "length": 500,
+                    "nullable": false,
+                    "default": ""
+                },
+                {
+                    "name": "canonical_url",
+                    "type": "string",
+                    "title": "规范链接Canonical",
+                    "length": 255,
+                    "nullable": false,
+                    "default": ""
+                },
+                {
+                    "name": "status",
+                    "type": "integer",
+                    "title": "状态(1发布,0草稿)",
+                    "nullable": false,
+                    "default": 1
+                },
+                {
+                    "name": "create_time",
+                    "type": "biginteger",
+                    "title": "创建时间",
+                    "nullable": false,
+                    "default": 0
+                },
+                {
+                    "name": "update_time",
+                    "type": "biginteger",
+                    "title": "更新时间",
+                    "nullable": false,
+                    "default": 0
+                }
+            ]
+        },
+        "site_inquiry": {
+            "table": "site_inquiry",
+            "title": "客户在线询盘",
+            "primary_key": "id",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "integer",
+                    "title": "ID",
+                    "primary": true
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "title": "客户姓名",
+                    "length": 64,
+                    "nullable": false
+                },
+                {
+                    "name": "mobile",
+                    "type": "string",
+                    "title": "联系电话",
+                    "length": 32,
+                    "nullable": false,
+                    "default": ""
+                },
+                {
+                    "name": "email",
+                    "type": "string",
+                    "title": "电子邮箱",
+                    "length": 128,
+                    "nullable": false,
+                    "default": ""
+                },
+                {
+                    "name": "company",
+                    "type": "string",
+                    "title": "所属公司",
+                    "length": 128,
+                    "nullable": false,
+                    "default": ""
+                },
+                {
+                    "name": "target_id",
+                    "type": "integer",
+                    "title": "关联文章或产品ID",
+                    "nullable": false,
+                    "default": 0
+                },
+                {
+                    "name": "content",
+                    "type": "text",
+                    "title": "询盘需求",
+                    "nullable": true
+                },
+                {
+                    "name": "remark",
+                    "type": "string",
+                    "title": "跟进备注",
+                    "length": 255,
+                    "nullable": false,
+                    "default": ""
+                },
+                {
+                    "name": "status",
+                    "type": "integer",
+                    "title": "跟进状态(0待处理,1已联系,2已完成)",
+                    "nullable": false,
+                    "default": 0
+                },
+                {
+                    "name": "create_time",
+                    "type": "biginteger",
+                    "title": "提交时间",
+                    "nullable": false,
+                    "default": 0
+                },
+                {
+                    "name": "update_time",
+                    "type": "biginteger",
+                    "title": "更新时间",
+                    "nullable": false,
+                    "default": 0
+                }
+            ]
+        }
+    },
+    "relations": [],
+    "state_machines": {
+        "demo_status": {
+            "entity": "demo_item",
+            "field": "status",
+            "states": [
+                "禁用",
+                "启用"
+            ],
+            "transitions": [
+                {
+                    "from": "0",
+                    "to": "1",
+                    "action": "enable",
+                    "title": "启用条目",
+                    "roles": [
+                        "admin"
+                    ]
+                },
+                {
+                    "from": "1",
+                    "to": "0",
+                    "action": "disable",
+                    "title": "禁用条目",
+                    "roles": [
+                        "admin"
+                    ]
+                }
+            ]
+        }
+    },
+    "permissions": [
+        {
+            "name": "business/demo_item/index",
+            "title": "查看示例条目"
+        },
+        {
+            "name": "business/demo_item/add",
+            "title": "新增示例条目"
+        },
+        {
+            "name": "business/demo_item/edit",
+            "title": "修改示例条目"
+        },
+        {
+            "name": "business/demo_item/del",
+            "title": "删除示例条目"
+        }
+    ],
+    "plugins": [],
+    "deployment": {
+        "target": "docker",
+        "database": "sqlite",
+        "domain": "localhost",
+        "admin_path": "/admin"
+    },
+    "external_requirements": [
+        {
+            "key": "wechat_mp_appid",
+            "title": "微信小程序 AppID",
+            "category": "wechat",
+            "required": false,
+            "env_mapping": "WECHAT_MP_APPID",
+            "description": "微信公众平台分配的小程序 AppID，用于小程序登录与接口签名"
+        },
+        {
+            "key": "wechat_mp_secret",
+            "title": "微信小程序 AppSecret",
+            "category": "wechat",
+            "required": false,
+            "env_mapping": "WECHAT_MP_SECRET",
+            "description": "微信小程序密钥（服务端保密使用，严禁前端暴露）"
+        }
+    ]
+}

@@ -1,0 +1,436 @@
+{
+  "name": "corporate-site",
+  "title": "企业官网起步模板",
+  "version": "1.0.0",
+  "description": "适用于企业官方网站，支持品牌形象展示、产品/服务中心、文章/新闻动态独立详情页、SEO/Sitemap/Robots、客户在线询盘与管理端维护",
+  "author": "HwAdmin Team",
+  "modules": [
+    {
+      "id": "corporate-site",
+      "title": "企业官网门户",
+      "description": "品牌官网展示、产品/文章独立详情、页面级 SEO/Sitemap/Robots 与在线询盘管理"
+    }
+  ],
+  "entities": [
+    "site_category",
+    "site_article",
+    "site_inquiry"
+  ],
+  "entities_schema": {
+    "site_category": {
+      "table": "site_category",
+      "title": "官网栏目分类",
+      "primary_key": "id",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "title": "ID",
+          "primary": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "title": "栏目名称",
+          "length": 64,
+          "nullable": false
+        },
+        {
+          "name": "slug",
+          "type": "string",
+          "title": "URL别名",
+          "length": 64,
+          "nullable": false,
+          "default": ""
+        },
+        {
+          "name": "sort",
+          "type": "integer",
+          "title": "排序权重",
+          "nullable": false,
+          "default": 0
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "title": "状态",
+          "nullable": false,
+          "default": 1
+        },
+        {
+          "name": "create_time",
+          "type": "biginteger",
+          "title": "创建时间",
+          "nullable": false,
+          "default": 0
+        },
+        {
+          "name": "update_time",
+          "type": "biginteger",
+          "title": "更新时间",
+          "nullable": false,
+          "default": 0
+        }
+      ]
+    },
+    "site_article": {
+      "table": "site_article",
+      "title": "官网文章与产品",
+      "primary_key": "id",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "title": "ID",
+          "primary": true
+        },
+        {
+          "name": "category_id",
+          "type": "integer",
+          "title": "栏目分类ID",
+          "nullable": false,
+          "default": 0
+        },
+        {
+          "name": "type",
+          "type": "string",
+          "title": "内容类型(article|product)",
+          "length": 32,
+          "nullable": false,
+          "default": "article"
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "title": "标题",
+          "length": 255,
+          "nullable": false
+        },
+        {
+          "name": "slug",
+          "type": "string",
+          "title": "URL别名",
+          "length": 128,
+          "nullable": false,
+          "default": ""
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "title": "摘要",
+          "length": 500,
+          "nullable": false,
+          "default": ""
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "title": "正文详情",
+          "nullable": true
+        },
+        {
+          "name": "cover_image",
+          "type": "string",
+          "title": "封面图",
+          "length": 255,
+          "nullable": false,
+          "default": ""
+        },
+        {
+          "name": "price",
+          "type": "decimal",
+          "title": "产品价格",
+          "precision": 10,
+          "scale": 2,
+          "nullable": false,
+          "default": "0.00"
+        },
+        {
+          "name": "views",
+          "type": "integer",
+          "title": "浏览量",
+          "nullable": false,
+          "default": 0
+        },
+        {
+          "name": "seo_title",
+          "type": "string",
+          "title": "SEO标题",
+          "length": 255,
+          "nullable": false,
+          "default": ""
+        },
+        {
+          "name": "seo_keywords",
+          "type": "string",
+          "title": "SEO关键词",
+          "length": 255,
+          "nullable": false,
+          "default": ""
+        },
+        {
+          "name": "seo_description",
+          "type": "string",
+          "title": "SEO描述",
+          "length": 500,
+          "nullable": false,
+          "default": ""
+        },
+        {
+          "name": "canonical_url",
+          "type": "string",
+          "title": "规范链接Canonical",
+          "length": 255,
+          "nullable": false,
+          "default": ""
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "title": "状态(1发布,0草稿)",
+          "nullable": false,
+          "default": 1
+        },
+        {
+          "name": "create_time",
+          "type": "biginteger",
+          "title": "创建时间",
+          "nullable": false,
+          "default": 0
+        },
+        {
+          "name": "update_time",
+          "type": "biginteger",
+          "title": "更新时间",
+          "nullable": false,
+          "default": 0
+        }
+      ]
+    },
+    "site_inquiry": {
+      "table": "site_inquiry",
+      "title": "客户在线询盘",
+      "primary_key": "id",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "title": "ID",
+          "primary": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "title": "客户姓名",
+          "length": 64,
+          "nullable": false
+        },
+        {
+          "name": "mobile",
+          "type": "string",
+          "title": "联系电话",
+          "length": 32,
+          "nullable": false,
+          "default": ""
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "title": "电子邮箱",
+          "length": 128,
+          "nullable": false,
+          "default": ""
+        },
+        {
+          "name": "company",
+          "type": "string",
+          "title": "所属公司",
+          "length": 128,
+          "nullable": false,
+          "default": ""
+        },
+        {
+          "name": "target_id",
+          "type": "integer",
+          "title": "关联文章或产品ID",
+          "nullable": false,
+          "default": 0
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "title": "询盘需求",
+          "nullable": true
+        },
+        {
+          "name": "remark",
+          "type": "string",
+          "title": "跟进备注",
+          "length": 255,
+          "nullable": false,
+          "default": ""
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "title": "跟进状态(0待处理,1已联系,2已完成)",
+          "nullable": false,
+          "default": 0
+        },
+        {
+          "name": "create_time",
+          "type": "biginteger",
+          "title": "提交时间",
+          "nullable": false,
+          "default": 0
+        },
+        {
+          "name": "update_time",
+          "type": "biginteger",
+          "title": "更新时间",
+          "nullable": false,
+          "default": 0
+        }
+      ]
+    }
+  },
+  "menus": [
+    {
+      "type": "dir",
+      "name": "site",
+      "title": "企业官网管理",
+      "path": "site",
+      "icon": "global-line",
+      "weight": 580,
+      "children": [
+        {
+          "type": "menu",
+          "name": "site/article",
+          "title": "文章与产品管理",
+          "path": "article",
+          "component": "@/views/site/article/index.vue",
+          "icon": "article-line",
+          "weight": 100,
+          "children": [
+            {
+              "type": "button",
+              "name": "site/article/index",
+              "title": "查看"
+            },
+            {
+              "type": "button",
+              "name": "site/article/read",
+              "title": "详情"
+            },
+            {
+              "type": "button",
+              "name": "site/article/add",
+              "title": "新增"
+            },
+            {
+              "type": "button",
+              "name": "site/article/edit",
+              "title": "编辑"
+            },
+            {
+              "type": "button",
+              "name": "site/article/del",
+              "title": "删除"
+            },
+            {
+              "type": "button",
+              "name": "site/article/categories",
+              "title": "栏目列表"
+            },
+            {
+              "type": "button",
+              "name": "site/article/saveCategory",
+              "title": "保存栏目"
+            }
+          ]
+        },
+        {
+          "type": "menu",
+          "name": "site/inquiry",
+          "title": "客户询盘管理",
+          "path": "inquiry",
+          "component": "@/views/site/inquiry/index.vue",
+          "icon": "question-answer-line",
+          "weight": 90,
+          "children": [
+            {
+              "type": "button",
+              "name": "site/inquiry/index",
+              "title": "查看"
+            },
+            {
+              "type": "button",
+              "name": "site/inquiry/read",
+              "title": "详情"
+            },
+            {
+              "type": "button",
+              "name": "site/inquiry/edit",
+              "title": "跟进状态"
+            },
+            {
+              "type": "button",
+              "name": "site/inquiry/followUp",
+              "title": "跟进备注"
+            },
+            {
+              "type": "button",
+              "name": "site/inquiry/del",
+              "title": "删除"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "migrations": [
+    "20261115100001_create_corporate_site_tables.php"
+  ],
+  "files": [
+    {
+      "source": "backend/app/common/model/SiteArticle.php",
+      "target": "server/app/common/model/SiteArticle.php"
+    },
+    {
+      "source": "backend/app/common/model/SiteCategory.php",
+      "target": "server/app/common/model/SiteCategory.php"
+    },
+    {
+      "source": "backend/app/common/model/SiteInquiry.php",
+      "target": "server/app/common/model/SiteInquiry.php"
+    },
+    {
+      "source": "backend/app/common/service/SiteArticleService.php",
+      "target": "server/app/common/service/SiteArticleService.php"
+    },
+    {
+      "source": "backend/app/adminapi/controller/site/Article.php",
+      "target": "server/app/adminapi/controller/site/Article.php"
+    },
+    {
+      "source": "backend/app/adminapi/controller/site/Inquiry.php",
+      "target": "server/app/adminapi/controller/site/Inquiry.php"
+    },
+    {
+      "source": "backend/app/api/controller/Site.php",
+      "target": "server/app/api/controller/Site.php"
+    },
+    {
+      "source": "frontend/views/site/article/index.vue",
+      "target": "admin-ui/src/views/site/article/index.vue"
+    },
+    {
+      "source": "frontend/views/site/inquiry/index.vue",
+      "target": "admin-ui/src/views/site/inquiry/index.vue"
+    },
+    {
+      "source": "frontend/public/site/index.html",
+      "target": "admin-ui/public/site/index.html"
+    }
+  ]
+}

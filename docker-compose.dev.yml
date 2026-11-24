@@ -1,0 +1,134 @@
+# ==============================================================================
+# HwAdmin 本地容器化极速开发编排 (Docker Compose Dev)
+# 用法: docker compose -f docker-compose.dev.yml up -d
+# 特性:
+#   1. 直连数据库与 Redis 端口 (MySQL: 13306, PG: 15432, Redis: 16379)，方便本地 IDE / 客户端调试；
+#   2. 自动启动轻量 SQLite 或 MySQL 运行环境；
+#   3. 移除冲突固定 container_name，并为 hwadmin-dev-php 配置 hwadmin-php 网络别名对齐 Nginx upstream。
+# ==============================================================================
+
+services:
+  # Web 代理
+  hwadmin-dev-nginx:
+    image: nginx:1.26-alpine
+    restart: unless-stopped
+    ports:
+      - "${DEV_HTTP_PORT:-8080}:80"
+    volumes:
+      - ./:/var/www/hwadmin
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - hwadmin-dev-php
+    networks:
+      - hwadmin-dev-net
+
+  # PHP 运行时
+  hwadmin-dev-php:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    working_dir: /var/www/hwadmin/server
+    volumes:
+      - ./:/var/www/hwadmin
+    environment:
+      APP_DEBUG: "true"
+      DB_DRIVER: "${DB_DRIVER:-sqlite}"
+      DB_TYPE: "${DB_DRIVER:-sqlite}"
+      DB_NAME: "${DB_NAME:-/var/www/hwadmin/server/runtime/dev.sqlite}"
+      DB_PREFIX: "hw_"
+      CACHE_DRIVER: "file"
+    networks:
+      hwadmin-dev-net:
+        aliases:
+          - hwadmin-php
+
+  # MySQL 开发容器（可选 profile: mysql）
+  hwadmin-dev-mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    profiles: ["mysql"]
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DEV_MYSQL_ROOT_PASSWORD:-root}"
+      MYSQL_DATABASE: "${DEV_MYSQL_DATABASE:-hwadmin_dev}"
+      MYSQL_USER: "${DEV_MYSQL_USER:-hwadmin}"
+      MYSQL_PASSWORD: "${DEV_MYSQL_PASSWORD:-devpassword}"
+      TZ: "Asia/Shanghai"
+    ports:
+      - "127.0.0.1:${DEV_MYSQL_PORT:-13306}:3306"
+    volumes:
+      - mysql_dev_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$$MYSQL_ROOT_PASSWORD\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      hwadmin-dev-net:
+        aliases:
+          - hwadmin-mysql
+
+  # PostgreSQL 开发容器（可选 profile: pgsql）
+  hwadmin-dev-pg:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    profiles: ["pgsql"]
+    environment:
+      POSTGRES_DB: "${DEV_PG_DATABASE:-hwadmin_dev}"
+      POSTGRES_USER: "${DEV_PG_USER:-hwadmin}"
+      POSTGRES_PASSWORD: "${DEV_PG_PASSWORD:-devpassword}"
+      TZ: "Asia/Shanghai"
+    ports:
+      - "127.0.0.1:${DEV_PG_PORT:-15432}:5432"
+    volumes:
+      - pg_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER:-hwadmin}\" -d \"$${POSTGRES_DB:-hwadmin_dev}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      hwadmin-dev-net:
+        aliases:
+          - hwadmin-pg
+          - hwadmin-postgres
+
+  # Redis 开发容器（可选 profile: redis）
+  hwadmin-dev-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    profiles: ["redis"]
+    environment:
+      REDIS_PASSWORD: "${DEV_REDIS_PASSWORD:-}"
+    command:
+      - sh
+      - -c
+      - |
+        if [ -n "$$REDIS_PASSWORD" ]; then
+          exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+        else
+          exec redis-server --appendonly yes
+        fi
+    ports:
+      - "127.0.0.1:${DEV_REDIS_PORT:-16379}:6379"
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG; else redis-cli ping | grep PONG; fi"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      hwadmin-dev-net:
+        aliases:
+          - hwadmin-redis
+
+networks:
+  hwadmin-dev-net:
+    driver: bridge
+
+volumes:
+  mysql_dev_data:
+  pg_dev_data:
+  redis_dev_data:
