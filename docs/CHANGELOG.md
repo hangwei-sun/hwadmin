@@ -1,3 +1,13 @@
+## [1.6.3] - 2026-11-24
+
+### 更新通道与 OTA 安全防线（Beta 内测）
+- **「更新通道（稳定版 Stable / 内测版 Beta）」切换支持**：
+  - [SystemUpdater.php](../server/core/plugin/SystemUpdater.php)、[Plugin.php](../server/app/adminapi/controller/system/Plugin.php) 与 [hwadmin.ts](../admin-ui/src/api/hwadmin.ts)：支持在系统配置中切换 `stable` / `beta` 更新通道，检测更新与下载框架补丁包时透传 `channel` 与当前站点域名 `site_domain`，并与普通 `stable` 通道完全隔离；
+  - [FrameworkUpdateDialog.vue](../admin-ui/src/components/FrameworkUpdateDialog.vue)、[index/index.vue](../admin-ui/src/views/index/index.vue) 与 [plugin/index.vue](../admin-ui/src/views/system/plugin/index.vue)：新增更新通道切换开关与内测版（Beta）标识展示。
+- **OTA 静态类依赖防线**：
+  - [SystemUpdater.php](../server/core/plugin/SystemUpdater.php) 与 [OtaChannelAndDependencyGuardTest.php](../server/tests/Unit/OtaChannelAndDependencyGuardTest.php)：新增框架补丁包核心控制器、公共服务与模型类依赖完整性静态校验，防止缺失关键依赖类导致线上 OTA 升级异常。
+- **版本号判定**：本次为更新通道切换与 OTA 静态类依赖防线增强，无数据库表结构或破坏性接口变更，按 patch 从 `1.6.2` 升级至 `1.6.3`。
+
 ## [1.6.2] - 2026-11-24
 
 ### 性能优化与体验改进

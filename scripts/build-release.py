@@ -79,7 +79,7 @@ def detect_default_version(project_root: Path) -> str:
         m = re.search(r"'version'\s*=>\s*'(\d+\.\d+\.\d+)'", config_file.read_text(encoding="utf-8"))
         if m:
             return "v" + m.group(1)
-    return "v1.6.2"
+    return "v1.6.3"
 
 
 def render_deploy_docs(version: str) -> dict[str, str]:

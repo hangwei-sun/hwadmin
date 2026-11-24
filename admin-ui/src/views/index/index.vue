@@ -13,19 +13,50 @@
           </el-tag>
           <el-tag
             v-if="frameworkInfo.has_update"
-            type="danger"
+            :type="frameworkInfo.release_channel === 'beta' ? 'warning' : 'danger'"
             effect="dark"
             class="status-tag pulse-tag"
           >
             新版本 v{{ frameworkInfo.latest_version }}
           </el-tag>
-          <el-tag v-else effect="plain" type="success" class="status-tag is-latest">
+          <el-tag
+            v-if="frameworkInfo.has_update && frameworkInfo.release_channel === 'beta'"
+            type="warning"
+            effect="dark"
+            class="status-tag beta-badge-tag"
+          >
+            内测版 (Beta)
+          </el-tag>
+          <el-tag v-else-if="!frameworkInfo.has_update" effect="plain" type="success" class="status-tag is-latest">
             已是最新
           </el-tag>
         </div>
         <p class="subtitle">
           让 AI 智能体读得懂、改得快的业务框架 · PHP 8+ + ThinkORM 4 + Vue 3 + MySQL 8.0+ / PG 16+ / SQLite
         </p>
+        <div class="update-channel-bar">
+          <span class="channel-label">
+            <vab-icon icon="git-branch-line" />
+            更新通道
+          </span>
+          <el-radio-group
+            v-model="selectedUpdateChannel"
+            size="small"
+            :disabled="switchingChannel || checkingUpdates"
+            class="channel-radio-group"
+            @change="handleUpdateChannelChange"
+          >
+            <el-radio-button value="stable">稳定版 (Stable)</el-radio-button>
+            <el-radio-button value="beta">内测版 (Beta)</el-radio-button>
+          </el-radio-group>
+          <span
+            v-if="frameworkInfo.has_update && frameworkInfo.release_channel === 'beta'"
+            class="beta-risk-banner"
+          >
+            <vab-icon icon="alert-line" />
+            检测到内测版 (Beta)，建议先在测试站验证后再升级生产环境
+          </span>
+        </div>
       </div>
       <div class="header-actions">
         <el-button :loading="checkingUpdates" class="banner-btn banner-btn-check" @click="handleCheckUpdates(true)">
@@ -582,7 +613,7 @@
 <script lang="ts" setup>
 import { reactive, ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { getDashboard, clearCache, checkSystemUpdates, getSystemBackups, rollbackSystemUpdate } from '/@/api/hwadmin'
+import { getDashboard, clearCache, checkSystemUpdates, setSystemUpdateChannel, getSystemBackups, rollbackSystemUpdate } from '/@/api/hwadmin'
 import { useUserStore } from '/@/store/modules/user'
 import FrameworkUpdateDialog, { type FrameworkReleaseInfo } from '/@/components/FrameworkUpdateDialog.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -597,6 +628,8 @@ const userStore = useUserStore()
 const loading = ref(false)
 const clearing = ref(false)
 const checkingUpdates = ref(false)
+const switchingChannel = ref(false)
+const selectedUpdateChannel = ref<'stable' | 'beta'>('stable')
 const frameworkUpdateDialogVisible = ref(false)
 const frameworkBackupDialogVisible = ref(false)
 const frameworkBackupsList = ref<any[]>([])
@@ -606,8 +639,10 @@ const trendViewMode = ref<'7d' | 'realtime'>('7d')
 const frameworkInfo = reactive<FrameworkReleaseInfo>({
   name: 'hwadmin',
   current_version: '',
-  latest_version: '1.6.2',
+  latest_version: '1.6.3',
   has_update: false,
+  update_channel: 'stable',
+  release_channel: 'stable',
   release_date: '2026-11-24',
   changelog: [],
   download_url: '',
@@ -810,7 +845,7 @@ const tooltipStyle = computed(() => {
 })
 
 const displayCurrentVersion = computed(() => {
-  return frameworkInfo.current_version || systemInfo.hw_version || '1.6.2'
+  return frameworkInfo.current_version || systemInfo.hw_version || '1.6.3'
 })
 
 const openFrameworkBackupDialog = async () => {
@@ -865,13 +900,16 @@ const handleCheckUpdates = async (showToast = true) => {
     const res: any = await checkSystemUpdates()
     if (res?.code === 1 && res?.data?.framework) {
       Object.assign(frameworkInfo, res.data.framework)
+      selectedUpdateChannel.value =
+        res.data.framework.update_channel === 'beta' ? 'beta' : 'stable'
       if (Array.isArray(res.data.backups)) {
         frameworkBackupsList.value = res.data.backups.filter((b: any) => b?.type === 'framework')
       }
+      const betaSuffix = frameworkInfo.release_channel === 'beta' ? '（内测版 Beta）' : ''
       if (showToast || frameworkInfo.has_update) {
         ElMessage.success(
           frameworkInfo.has_update
-            ? `发现新版本 v${frameworkInfo.latest_version}`
+            ? `发现新版本 v${frameworkInfo.latest_version}${betaSuffix}`
             : '已是最新版本'
         )
       }
@@ -884,6 +922,38 @@ const handleCheckUpdates = async (showToast = true) => {
     }
   } finally {
     checkingUpdates.value = false
+  }
+}
+
+const handleUpdateChannelChange = async (val: string | number | boolean | undefined) => {
+  const targetChannel: 'stable' | 'beta' = val === 'beta' ? 'beta' : 'stable'
+  const prevChannel: 'stable' | 'beta' =
+    frameworkInfo.update_channel === 'beta' ? 'beta' : 'stable'
+  if (targetChannel === prevChannel) {
+    return
+  }
+  switchingChannel.value = true
+  try {
+    const res: any = await setSystemUpdateChannel({ channel: targetChannel })
+    if (res?.code === 1) {
+      frameworkInfo.update_channel = targetChannel
+      selectedUpdateChannel.value = targetChannel
+      ElMessage.success(
+        res?.msg ||
+          (targetChannel === 'beta'
+            ? '已切换至内测版 (Beta) 通道，正在重新检测更新...'
+            : '已切换至稳定版 (Stable) 通道，正在重新检测更新...')
+      )
+      await handleCheckUpdates(true)
+    } else {
+      selectedUpdateChannel.value = prevChannel
+      ElMessage.error(res?.msg || '切换更新通道失败')
+    }
+  } catch (e: any) {
+    selectedUpdateChannel.value = prevChannel
+    ElMessage.error(e?.msg || e?.message || '切换更新通道失败')
+  } finally {
+    switchingChannel.value = false
   }
 }
 
@@ -1024,6 +1094,11 @@ onBeforeUnmount(() => {
           &.pulse-tag {
             animation: hwPulseGlow 2s infinite ease-in-out;
           }
+
+          &.beta-badge-tag {
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.38);
+          }
         }
       }
 
@@ -1044,6 +1119,54 @@ onBeforeUnmount(() => {
         font-size: 13px;
         opacity: 0.92;
         line-height: 1.5;
+      }
+
+      .update-channel-bar {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 10px;
+
+        .channel-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 12px;
+          font-weight: 600;
+          color: rgba(255, 255, 255, 0.95);
+        }
+
+        .channel-radio-group {
+          :deep(.el-radio-button__inner) {
+            background: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.34);
+            color: #ffffff;
+            font-weight: 500;
+            padding: 5px 11px;
+            box-shadow: none;
+          }
+
+          :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+            background: #ffffff;
+            border-color: #ffffff;
+            color: #1d4ed8;
+            font-weight: 600;
+          }
+        }
+
+        .beta-risk-banner {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 3px 10px;
+          border-radius: 999px;
+          background: rgba(254, 243, 199, 0.96);
+          border: 1px solid rgba(251, 191, 36, 0.9);
+          color: #92400e;
+          font-size: 12px;
+          font-weight: 600;
+        }
       }
     }
 

@@ -640,6 +640,14 @@ export const checkSystemUpdates = () => {
   })
 }
 
+export const setSystemUpdateChannel = (data: { channel: 'stable' | 'beta' }) => {
+  return request({
+    url: `${API_BASE}/system.plugin/setUpdateChannel`,
+    method: 'post',
+    data,
+  })
+}
+
 export const updateSystemFramework = (data?: { download_url?: string }) => {
   return request({
     url: `${API_BASE}/system.plugin/updateFramework`,

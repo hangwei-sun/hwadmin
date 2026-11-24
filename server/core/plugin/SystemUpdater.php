@@ -25,7 +25,10 @@ use RecursiveIteratorIterator;
  */
 class SystemUpdater
 {
-    public const CURRENT_VERSION = '1.6.2';
+    public const CURRENT_VERSION = '1.6.3';
+    public const CHANNEL_STABLE = 'stable';
+    public const CHANNEL_BETA = 'beta';
+    public const VALID_CHANNELS = [self::CHANNEL_STABLE, self::CHANNEL_BETA];
 
     protected string $runtimeBackupDir;
     protected string $metaFile;
@@ -56,11 +59,192 @@ class SystemUpdater
     }
 
     /**
+     * 规范化系统更新通道标识（仅允许 stable | beta，默认 stable）
+     */
+    public static function normalizeUpdateChannel(?string $channel): string
+    {
+        $val = strtolower(trim((string) $channel));
+        return in_array($val, self::VALID_CHANNELS, true) ? $val : self::CHANNEL_STABLE;
+    }
+
+    /**
+     * 获取当前站点配置的更新通道（stable | beta，默认 stable）
+     */
+    public function getUpdateChannel(): string
+    {
+        try {
+            if (class_exists(\app\common\service\ConfigService::class)) {
+                $val = \app\common\service\ConfigService::get('update_channel');
+                if ($val !== null && $val !== '') {
+                    return self::normalizeUpdateChannel((string) $val);
+                }
+            }
+        } catch (Throwable) {
+        }
+
+        try {
+            $val = Db::name('config')->where('name', 'update_channel')->value('value');
+            if ($val !== null && $val !== '') {
+                return self::normalizeUpdateChannel((string) $val);
+            }
+        } catch (Throwable) {
+        }
+
+        return self::CHANNEL_STABLE;
+    }
+
+    /**
+     * 设置并持久化系统更新通道（仅允许 stable | beta）
+     */
+    public function setUpdateChannel(string $channel): string
+    {
+        $normalized = strtolower(trim($channel));
+        if (!in_array($normalized, self::VALID_CHANNELS, true)) {
+            throw new ApiException('非法的更新通道，仅支持 stable 或 beta');
+        }
+
+        $now = time();
+        $exists = Db::name('config')->where('name', 'update_channel')->find();
+        if ($exists) {
+            Db::name('config')->where('name', 'update_channel')->update([
+                'value'       => $normalized,
+                'update_time' => $now,
+            ]);
+        } else {
+            Db::name('config')->insert([
+                'group'       => 'basic',
+                'name'        => 'update_channel',
+                'title'       => '系统更新通道',
+                'type'        => 'select',
+                'value'       => $normalized,
+                'options'     => '{"stable":"稳定版 (Stable)","beta":"内测版 (Beta)"}',
+                'tip'         => '切换在线更新通道：稳定版适合生产环境，内测版可抢先体验新功能',
+                'weight'      => 5,
+                'create_time' => $now,
+                'update_time' => $now,
+            ]);
+        }
+
+        if (class_exists(\app\common\service\ConfigService::class)) {
+            \app\common\service\ConfigService::clearCache();
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * 解析当前站点域名（用于内测白名单匹配）
+     */
+    public function resolveSiteDomain(?string $siteDomain = null): string
+    {
+        $candidate = trim((string) $siteDomain);
+        if ($candidate === '') {
+            try {
+                $candidate = trim((string) $this->app->request->host(true));
+            } catch (Throwable) {
+                $candidate = '';
+            }
+        }
+        if ($candidate === '') {
+            try {
+                $authFile = $this->app->getRuntimePath() . 'market_auth.json';
+                if (is_file($authFile)) {
+                    $json = json_decode((string) file_get_contents($authFile), true);
+                    if (is_array($json) && !empty($json['site_domain'])) {
+                        $candidate = trim((string) $json['site_domain']);
+                    }
+                }
+            } catch (Throwable) {
+            }
+        }
+        if ($candidate === '') {
+            try {
+                $val = Db::name('config')->where('name', 'market_auth_info')->value('value');
+                if ($val) {
+                    $json = json_decode((string) $val, true);
+                    if (is_array($json) && !empty($json['site_domain'])) {
+                        $candidate = trim((string) $json['site_domain']);
+                    }
+                }
+            } catch (Throwable) {
+            }
+        }
+        if ($candidate === '') {
+            $candidate = trim((string) (env('APP_URL', '') ?: ''));
+        }
+        if ($candidate === '') {
+            return '';
+        }
+
+        $parsedHost = parse_url(str_contains($candidate, '://') ? $candidate : 'https://' . $candidate, PHP_URL_HOST);
+        if (is_string($parsedHost) && $parsedHost !== '') {
+            return strtolower($parsedHost);
+        }
+
+        return strtolower(preg_replace('/:\d+$/', '', $candidate) ?: $candidate);
+    }
+
+    /**
+     * 安全追加或补全 URL 查询参数（不覆盖已有非空参数）
+     */
+    public static function appendUrlQueryParams(string $url, array $extraParams): string
+    {
+        if ($url === '' || empty($extraParams)) {
+            return $url;
+        }
+        $parts = parse_url($url);
+        if ($parts === false) {
+            return $url;
+        }
+        $query = [];
+        if (!empty($parts['query'])) {
+            parse_str($parts['query'], $query);
+        }
+        foreach ($extraParams as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            if (!array_key_exists($key, $query) || $query[$key] === '') {
+                $query[$key] = (string) $value;
+            }
+        }
+
+        $rebuilt = '';
+        if (!empty($parts['scheme'])) {
+            $rebuilt .= $parts['scheme'] . '://';
+        }
+        if (!empty($parts['user'])) {
+            $rebuilt .= $parts['user'];
+            if (!empty($parts['pass'])) {
+                $rebuilt .= ':' . $parts['pass'];
+            }
+            $rebuilt .= '@';
+        }
+        if (!empty($parts['host'])) {
+            $rebuilt .= $parts['host'];
+        }
+        if (!empty($parts['port'])) {
+            $rebuilt .= ':' . $parts['port'];
+        }
+        $rebuilt .= $parts['path'] ?? '';
+        if (!empty($query)) {
+            $rebuilt .= '?' . http_build_query($query);
+        }
+        if (!empty($parts['fragment'])) {
+            $rebuilt .= '#' . $parts['fragment'];
+        }
+
+        return $rebuilt;
+    }
+
+    /**
      * 全局检测框架与插件的最新可用版本
      */
-    public function checkUpdates(?string $gatewayUrl = null): array
+    public function checkUpdates(?string $gatewayUrl = null, ?string $siteDomain = null, ?string $channel = null): array
     {
         $currentFrameworkVer = ltrim((string) $this->getVersion(), 'vV');
+        $activeChannel = $channel !== null ? self::normalizeUpdateChannel($channel) : $this->getUpdateChannel();
+        $resolvedSiteDomain = $this->resolveSiteDomain($siteDomain);
 
         // 收集本地已安装插件状态
         /** @var PluginManager $pluginManager */
@@ -73,11 +257,12 @@ class SystemUpdater
         // 尝试从网关拉取最新目录
         $remoteCatalog = null;
         if ($cleanGatewayUrl) {
-            $remoteCatalog = $this->fetchFromGateway($cleanGatewayUrl);
+            $remoteCatalog = $this->fetchFromGateway($cleanGatewayUrl, $activeChannel, $resolvedSiteDomain);
         }
 
         // 官方内置最新基线定义 (作为主更新端模拟或离线回退源)
         $latestFrameworkVer = ltrim((string) ($remoteCatalog['framework']['latest_version'] ?? self::CURRENT_VERSION), 'vV');
+        $rawReleaseChannel = (string) ($remoteCatalog['framework']['release_channel'] ?? ($remoteCatalog['framework']['channel'] ?? ''));
         $frameworkChangelog = $remoteCatalog['framework']['changelog'] ?? [
             '1. 新增可视化全栈CRUD生成插件 (hwadmin-crud)',
             '2. 新增框架与插件在线热更新与安全备份回滚中枢',
@@ -103,6 +288,18 @@ class SystemUpdater
             }
         } else {
             $downloadUrl = $cleanGatewayUrl ? $cleanGatewayUrl . '/download?name=framework' : '';
+        }
+
+        if ($rawReleaseChannel === '' && $downloadUrl !== '' && str_contains($downloadUrl, 'channel=beta')) {
+            $rawReleaseChannel = self::CHANNEL_BETA;
+        }
+        $releaseChannel = self::normalizeUpdateChannel($rawReleaseChannel !== '' ? $rawReleaseChannel : self::CHANNEL_STABLE);
+
+        if ($downloadUrl !== '' && ($releaseChannel === self::CHANNEL_BETA || $activeChannel === self::CHANNEL_BETA)) {
+            $downloadUrl = self::appendUrlQueryParams($downloadUrl, [
+                'channel'     => $releaseChannel,
+                'site_domain' => $resolvedSiteDomain,
+            ]);
         }
 
         // 插件版本对比
@@ -184,6 +381,8 @@ class SystemUpdater
                 'current_version' => $currentFrameworkVer,
                 'latest_version'  => $latestFrameworkVer,
                 'has_update'      => version_compare($latestFrameworkVer, $currentFrameworkVer, '>'),
+                'update_channel'  => $activeChannel,
+                'release_channel' => $releaseChannel,
                 'release_date'    => $releaseDate,
                 'changelog'       => $frameworkChangelog,
                 'download_url'    => $downloadUrl,
@@ -667,13 +866,32 @@ class SystemUpdater
     }
 
     /**
+     * 构造请求商城网关 /catalog 的完整 URL（自动附带 channel 与 site_domain 参数）
+     */
+    public static function buildCatalogUrl(
+        string $gatewayUrl,
+        string $channel = self::CHANNEL_STABLE,
+        string $siteDomain = ''
+    ): string {
+        $base = rtrim($gatewayUrl, '/') . '/catalog';
+        $query = http_build_query([
+            'channel'     => self::normalizeUpdateChannel($channel),
+            'site_domain' => trim($siteDomain),
+        ]);
+        return $base . (str_contains($base, '?') ? '&' : '?') . $query;
+    }
+
+    /**
      * 从网关读取数据
      */
-    protected function fetchFromGateway(string $gatewayUrl): ?array
+    protected function fetchFromGateway(string $gatewayUrl, ?string $channel = null, ?string $siteDomain = null): ?array
     {
-        $url = rtrim($gatewayUrl, '/') . '/catalog';
+        $activeChannel = $channel !== null ? self::normalizeUpdateChannel($channel) : $this->getUpdateChannel();
+        $resolvedDomain = $this->resolveSiteDomain($siteDomain);
+        $url = self::buildCatalogUrl($gatewayUrl, $activeChannel, $resolvedDomain);
+        $headers = $resolvedDomain !== '' ? ['X-Site-Domain: ' . $resolvedDomain] : [];
         try {
-            $resp = OutboundHttpGuard::request($url, 'GET', '', [], 4, 2, 2, 'HwAdmin-Updater/1.0');
+            $resp = OutboundHttpGuard::request($url, 'GET', '', $headers, 4, 2, 2, 'HwAdmin-Updater/1.0');
         } catch (Throwable) {
             return null;
         }
@@ -694,7 +912,9 @@ class SystemUpdater
     protected function downloadAndApplyPatch(string $url): void
     {
         $tmpFile = $this->runtimeBackupDir . 'patch_' . time() . '.zip';
-        $dl = OutboundHttpGuard::downloadToFile($url, $tmpFile, [], 60, 10, 3);
+        $siteDomain = $this->resolveSiteDomain();
+        $headers = $siteDomain !== '' ? ['X-Site-Domain: ' . $siteDomain] : [];
+        $dl = OutboundHttpGuard::downloadToFile($url, $tmpFile, $headers, 60, 10, 3);
         $ok = $dl['ok'];
         $httpCode = $dl['http_code'];
         $curlErr = $dl['error'];

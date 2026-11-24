@@ -200,7 +200,7 @@ final class SecurityHardeningTest extends TestCase
         $prop = $ref->getProperty('noNeedRight');
         $prop->setAccessible(true);
         $noNeedRight = $prop->getValue($ref->newInstanceWithoutConstructor());
-        foreach (['saveMarketUrl', 'updateFramework', 'updatePlugin', 'rollbackUpdate', 'marketAccount', 'loginMarketAccount', 'syncMarketLicenses', 'logoutMarketAccount', 'downloadMarket'] as $protectedAction) {
+        foreach (['saveMarketUrl', 'setUpdateChannel', 'updateFramework', 'updatePlugin', 'rollbackUpdate', 'marketAccount', 'loginMarketAccount', 'syncMarketLicenses', 'logoutMarketAccount', 'downloadMarket'] as $protectedAction) {
             $this->assertNotContains($protectedAction, $noNeedRight, "敏感操作 [{$protectedAction}] 不得放入 noNeedRight");
         }
 
@@ -209,6 +209,7 @@ final class SecurityHardeningTest extends TestCase
         try {
             foreach ([
                 ['saveMarketUrl', ['market_server_url' => '']],
+                ['setUpdateChannel', ['channel' => 'beta']],
                 ['updateFramework', ['download_url' => '']],
                 ['updatePlugin', ['name' => 'demo']],
                 ['rollbackUpdate', ['backup_id' => 'fake']],

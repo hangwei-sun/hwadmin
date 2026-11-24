@@ -25,6 +25,7 @@ use ZipArchive;
  * GET  /adminapi/system.plugin/config?name=x  读取配置（含表单定义）
  * POST /adminapi/system.plugin/config         { name, config: {} } 保存配置
  * GET  /adminapi/system.plugin/checkUpdates   检测框架与插件最新版本与更新日志
+ * POST /adminapi/system.plugin/setUpdateChannel 切换系统在线更新通道（stable | beta）
  * POST /adminapi/system.plugin/updateFramework 执行主框架在线升级与备份
  * POST /adminapi/system.plugin/updatePlugin    执行指定插件在线升级
  * POST /adminapi/system.plugin/rollbackUpdate 从备份快照一键回滚
@@ -1122,14 +1123,54 @@ class Plugin extends AdminController
     }
 
     /**
+     * 解析当前站点域名（优先请求 Host，其次已绑定的官网账号站点域名）
+     */
+    protected function resolveCurrentSiteDomain(): string
+    {
+        $host = trim((string) $this->request->host(true));
+        if ($host !== '') {
+            return strtolower($host);
+        }
+
+        $auth = $this->getStoredMarketAuth();
+        $stored = trim((string) ($auth['site_domain'] ?? ''));
+        if ($stored !== '') {
+            $parsedHost = parse_url(str_contains($stored, '://') ? $stored : 'https://' . $stored, PHP_URL_HOST);
+            if (is_string($parsedHost) && $parsedHost !== '') {
+                return strtolower($parsedHost);
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * 全局检测主框架与插件在线更新状态
      * GET /adminapi/system.plugin/checkUpdates
      */
     public function checkUpdates(): void
     {
         $gateway = $this->getActiveMarketGatewayUrl();
-        $result = $this->updater->checkUpdates($gateway);
+        $siteDomain = $this->resolveCurrentSiteDomain();
+        $result = $this->updater->checkUpdates($gateway, $siteDomain);
         $this->success($result);
+    }
+
+    /**
+     * 切换系统在线更新通道（仅超级管理员可操作）
+     * POST /adminapi/system.plugin/setUpdateChannel
+     */
+    public function setUpdateChannel(): void
+    {
+        if (!$this->request->isPost()) {
+            $this->error('请求方式错误', 0, null, 405);
+        }
+        $this->requireSuperAdmin();
+        $channel = trim((string) $this->request->post('channel', ''));
+        $saved = $this->updater->setUpdateChannel($channel);
+        $this->success([
+            'update_channel' => $saved,
+        ], $saved === SystemUpdater::CHANNEL_BETA ? '已切换至内测版 (Beta) 更新通道' : '已切换至稳定版 (Stable) 更新通道');
     }
 
     /**

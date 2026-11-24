@@ -460,7 +460,7 @@ class ProjectSchemaService
             'app_id'            => $data['app_id'] ?? 'unknown',
             'app_name'          => $data['app_name'] ?? 'unknown',
             'app_version'       => $data['app_version'] ?? '1.0.0',
-            'framework_version' => $data['framework_version'] ?? '1.6.2',
+            'framework_version' => $data['framework_version'] ?? '1.6.3',
             'clients'           => $clients,
             'modules_count'     => count($modules),
             'entities_count'    => count($entitySummary),

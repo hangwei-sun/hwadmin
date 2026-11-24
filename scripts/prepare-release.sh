@@ -5,7 +5,7 @@ set -euo pipefail
 export PATH="$HOME/.local/bin:$PATH"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEFAULT_VERSION=$(python3 -c "import re, pathlib; m = re.search(r\"'version'\s*=>\s*'([^']+)'\", pathlib.Path('$ROOT/server/config/hwadmin.php').read_text(encoding='utf-8')); print('v' + m.group(1) if m else 'v1.6.2')")
+DEFAULT_VERSION=$(python3 -c "import re, pathlib; m = re.search(r\"'version'\s*=>\s*'([^']+)'\", pathlib.Path('$ROOT/server/config/hwadmin.php').read_text(encoding='utf-8')); print('v' + m.group(1) if m else 'v1.6.3')")
 
 MODE="unified"
 VERSION="$DEFAULT_VERSION"
