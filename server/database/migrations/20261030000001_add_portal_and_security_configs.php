@@ -66,25 +66,28 @@ class AddPortalAndSecurityConfigs extends Migrator
             ],
         ];
 
+        $table = $this->table('config');
+        $rowsToInsert = [];
         foreach ($items as $item) {
             $row = $this->fetchRow(sprintf("SELECT id FROM %s WHERE name = '%s' LIMIT 1", $tableName, $item['name']));
             if (!$row) {
-                $this->execute(sprintf(
-                    "INSERT INTO %s (`group`, `name`, `title`, `type`, `value`, `options`, `tip`, `rule`, `weight`, `create_time`, `update_time`) " .
-                    "VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '', %d, %d, %d)",
-                    $tableName,
-                    $item['group'],
-                    $item['name'],
-                    addslashes($item['title']),
-                    $item['type'],
-                    addslashes($item['value']),
-                    addslashes($item['options']),
-                    addslashes($item['tip']),
-                    $item['weight'],
-                    $now,
-                    $now
-                ));
+                $rowsToInsert[] = [
+                    'group'       => $item['group'],
+                    'name'        => $item['name'],
+                    'title'       => $item['title'],
+                    'type'        => $item['type'],
+                    'value'       => $item['value'],
+                    'options'     => $item['options'],
+                    'tip'         => $item['tip'],
+                    'rule'        => '',
+                    'weight'      => $item['weight'],
+                    'create_time' => $now,
+                    'update_time' => $now,
+                ];
             }
+        }
+        if ($rowsToInsert !== []) {
+            $table->insert($rowsToInsert)->saveData();
         }
     }
 

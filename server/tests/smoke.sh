@@ -23,6 +23,12 @@ export PHP_DB_DRIVER=sqlite PHP_DB_NAME="$DB_FILE" DB_DRIVER=sqlite DB_TYPE=sqli
 LOCK="$ROOT/config/install.lock"
 HAD_LOCK=0; [ -f "$LOCK" ] && HAD_LOCK=1 && mv "$LOCK" "$LOCK.bak"
 HAD_DEMO=1; [ -d plugins/smoke ] || HAD_DEMO=0
+CREATED_ADMIN_STUB=0
+if [ ! -f public/admin/index.html ]; then
+  mkdir -p public/admin
+  printf '%s\n' '<!doctype html><html><head><meta charset="utf-8"><title>HwAdmin</title></head><body><div id="app"></div></body></html>' > public/admin/index.html
+  CREATED_ADMIN_STUB=1
+fi
 rm -rf runtime/throttle runtime/*/throttle 2>/dev/null || true
 
 cleanup() {
@@ -32,6 +38,7 @@ cleanup() {
   rm -rf plugins/badrule plugins/badsql 2>/dev/null || true
   [ "$HAD_LOCK" = 1 ] && [ -f "$LOCK.bak" ] && mv "$LOCK.bak" "$LOCK" || true
   [ "$HAD_DEMO" = 0 ] && rm -rf plugins/smoke public/plugins/smoke
+  [ "$CREATED_ADMIN_STUB" = 1 ] && rm -f public/admin/index.html && rmdir public/admin 2>/dev/null || true
   find public/uploads -mindepth 1 -not -name '.htaccess' -delete 2>/dev/null || true
   rm -rf runtime/cache runtime/*/cache runtime/throttle runtime/*/throttle 2>/dev/null || true
 }

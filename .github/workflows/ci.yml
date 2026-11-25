@@ -100,7 +100,7 @@ jobs:
             chmod +x tests/smoke.sh
             bash tests/smoke.sh
             php think hw:inspect --json > /dev/null
-            php think hw:crud --table=hw_admin --dry-run
+            php think hw:crud --table=hw_admin --dry-run --incremental
           elif [ "${{ matrix.db }}" = "mysql" ]; then
             echo "Running MySQL 8.0 validation..."
             printf "%s\n" \
@@ -120,7 +120,7 @@ jobs:
             php think migrate:run
             php think hw:install --username=admin --password=Admin123456! --db-driver=mysql --db-host=127.0.0.1 --db-port=3306 --db-name=hwadmin_test --db-user=root --db-pass=root --force
             php think hw:inspect --json > /dev/null
-            php think hw:crud --table=hw_admin --dry-run
+            php think hw:crud --table=hw_admin --dry-run --incremental
             php -S 127.0.0.1:18080 -t public public/router.php >/dev/null 2>&1 &
             CI_HTTP_PID=$!
             trap 'kill "$CI_HTTP_PID" 2>/dev/null || true' EXIT
@@ -163,7 +163,7 @@ jobs:
             php think migrate:run
             php think hw:install --username=admin --password=Admin123456! --db-driver=pgsql --db-host=127.0.0.1 --db-port=5432 --db-name=hwadmin_test --db-user=postgres --db-pass=root --force
             php think hw:inspect --json > /dev/null
-            php think hw:crud --table=hw_admin --dry-run
+            php think hw:crud --table=hw_admin --dry-run --incremental
             php -S 127.0.0.1:18080 -t public public/router.php >/dev/null 2>&1 &
             CI_HTTP_PID=$!
             trap 'kill "$CI_HTTP_PID" 2>/dev/null || true' EXIT
