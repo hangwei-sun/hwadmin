@@ -8,6 +8,8 @@ use app\common\service\ConfigService;
 use app\common\service\DictService;
 use core\auth\CaptchaService;
 use core\exception\ApiException;
+use core\plugin\AssetPublisher;
+use core\plugin\PluginManager;
 use core\plugin\SystemUpdater;
 use tests\TestCase;
 use think\exception\HttpResponseException;
@@ -801,6 +803,478 @@ final class OtaChannelAndDependencyGuardTest extends TestCase
             $this->assertFalse($byId[$legacyBackupId]['has_frontend_backup']);
         } finally {
             $this->removeDirectoryRecursively($tmpRoot);
+        }
+    }
+
+    public function testSiteProtectedFilesAreNotOverwrittenWhenPresentAndInitializedWhenMissing(): void
+    {
+        $tmpRoot = $this->createIsolatedOtaTempRoot('site_protect');
+        $siteFiles = [
+            'config/hwadmin.php'           => "<?php\nreturn ['site' => 'custom'];\n",
+            'public/.htaccess'             => "# custom apache rules\n",
+            'public/nginx.htaccess'        => "# custom nginx rules\n",
+            'public/favicon.ico'           => "CUSTOM_ICON_BYTES",
+            'public/admin/hwadmin.config.js' => "window.__HWADMIN_CONFIG__ = { title: 'Custom Site' };\n",
+        ];
+
+        foreach ($siteFiles as $rel => $content) {
+            $full = $tmpRoot . '/' . $rel;
+            @mkdir(dirname($full), 0755, true);
+            file_put_contents($full, $content);
+        }
+
+        $zipPath = $tmpRoot . '/site_protect_patch.zip';
+        $zip = new \ZipArchive();
+        $this->assertTrue($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === true);
+        $zip->addFromString('server/core/SiteGuardProbe.php', "<?php\nreturn 'ok';\n");
+        $zip->addFromString('server/config/hwadmin.php', "<?php\nreturn ['site' => 'overwritten'];\n");
+        $zip->addFromString('server/public/.htaccess', 'OVERWRITTEN_HTACCESS');
+        $zip->addFromString('server/public/nginx.htaccess', 'OVERWRITTEN_NGINX');
+        $zip->addFromString('server/public/favicon.ico', 'OVERWRITTEN_ICO');
+        $zip->addFromString('server/public/admin/hwadmin.config.js', 'OVERWRITTEN_JS');
+        $zip->close();
+
+        $isolatedApp = new \think\App($tmpRoot);
+        $updater = new SystemUpdater($isolatedApp);
+
+        try {
+            // 反例：目标站点已存在这 5 类站点级文件时，即使 preserveFrontend=false (scope=full) 也绝不覆写
+            $applied = $updater->applyPatchArchive($zipPath, false);
+            $this->assertSame(1, $applied);
+            $this->assertSame("<?php\nreturn 'ok';\n", file_get_contents($tmpRoot . '/core/SiteGuardProbe.php'));
+            foreach ($siteFiles as $rel => $expected) {
+                $this->assertSame($expected, file_get_contents($tmpRoot . '/' . $rel), "已存在的站点级文件 [{$rel}] 绝不可被覆写");
+            }
+
+            // 正例：若目标站点缺失其中部分文件，则允许初始化写入
+            @unlink($tmpRoot . '/public/nginx.htaccess');
+            @unlink($tmpRoot . '/public/admin/hwadmin.config.js');
+            $appliedMissing = $updater->applyPatchArchive($zipPath, false);
+            $this->assertSame(3, $appliedMissing);
+            $this->assertSame('OVERWRITTEN_NGINX', file_get_contents($tmpRoot . '/public/nginx.htaccess'));
+            $this->assertSame('OVERWRITTEN_JS', file_get_contents($tmpRoot . '/public/admin/hwadmin.config.js'));
+            $this->assertSame($siteFiles['config/hwadmin.php'], file_get_contents($tmpRoot . '/config/hwadmin.php'));
+            $this->assertSame($siteFiles['public/.htaccess'], file_get_contents($tmpRoot . '/public/.htaccess'));
+            $this->assertSame($siteFiles['public/favicon.ico'], file_get_contents($tmpRoot . '/public/favicon.ico'));
+        } finally {
+            $this->removeDirectoryRecursively($tmpRoot);
+        }
+    }
+
+    public function testClientPatchWhitelistBlocksUnauthorizedPathsAndAllowsOfficialPaths(): void
+    {
+        // 正例：官方框架合法补丁路径放行
+        foreach ([
+            'core/plugin/SystemUpdater.php',
+            'public/admin/index.html',
+            'database/migrations/20261125000001_probe.php',
+            'app/adminapi/controller/system/Plugin.php',
+            'app/adminapi/controller/auth/Admin.php',
+            'app/common/model/system/Dict.php',
+            'app/common/service/ConfigService.php',
+            'public/index.php',
+            'version.json',
+        ] as $allowedPath) {
+            $this->assertTrue(SystemUpdater::isAllowedFrameworkPatchPath($allowedPath), "合法路径 [{$allowedPath}] 应通过白名单");
+        }
+
+        // 反例：越权业务/配置/运行态路径拦截
+        foreach ([
+            'app/api/controller/CustomBiz.php',
+            'app/api/controller/Index.php',
+            'app/index/route/app.php',
+            'app/index/view/portal/index.html',
+            'config/app.php',
+            'config/database.php',
+            'app/adminapi/controller/biz/Custom.php',
+            'app/common/model/CustomOrder.php',
+            'app/common/service/PayService.php',
+            'plugins/cms/Plugin.php',
+            'public/evil.php',
+            '../escape.php',
+        ] as $blockedPath) {
+            $this->assertFalse(SystemUpdater::isAllowedFrameworkPatchPath($blockedPath), "越权路径 [{$blockedPath}] 必须被客户端白名单拦截");
+        }
+
+        $tmpRoot = $this->createIsolatedOtaTempRoot('whitelist');
+        @mkdir($tmpRoot . '/app/api/controller', 0755, true);
+        @mkdir($tmpRoot . '/app/index/route', 0755, true);
+        @mkdir($tmpRoot . '/app/index/view/portal', 0755, true);
+        file_put_contents($tmpRoot . '/app/api/controller/CustomBiz.php', "<?php\nreturn 'keep-biz';\n");
+        file_put_contents($tmpRoot . '/config/app.php', "<?php\nreturn ['keep' => true];\n");
+
+        $zipPath = $tmpRoot . '/malicious_patch.zip';
+        $zip = new \ZipArchive();
+        $this->assertTrue($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === true);
+        $zip->addFromString('server/core/AllowedKernel.php', "<?php\nreturn 'allowed';\n");
+        $zip->addFromString('server/app/api/controller/CustomBiz.php', "<?php\nreturn 'pwned';\n");
+        $zip->addFromString('server/app/index/route/app.php', "<?php\nreturn 'pwned-route';\n");
+        $zip->addFromString('server/app/index/view/portal/index.html', '<div>pwned</div>');
+        $zip->addFromString('server/config/app.php', "<?php\nreturn ['pwned' => true];\n");
+        $zip->close();
+
+        $isolatedApp = new \think\App($tmpRoot);
+        $updater = new SystemUpdater($isolatedApp);
+
+        try {
+            $applied = $updater->applyPatchArchive($zipPath, false);
+            $this->assertSame(1, $applied);
+            $this->assertSame("<?php\nreturn 'allowed';\n", file_get_contents($tmpRoot . '/core/AllowedKernel.php'));
+            $this->assertSame("<?php\nreturn 'keep-biz';\n", file_get_contents($tmpRoot . '/app/api/controller/CustomBiz.php'));
+            $this->assertSame("<?php\nreturn ['keep' => true];\n", file_get_contents($tmpRoot . '/config/app.php'));
+            $this->assertFileDoesNotExist($tmpRoot . '/app/index/route/app.php');
+            $this->assertFileDoesNotExist($tmpRoot . '/app/index/view/portal/index.html');
+        } finally {
+            $this->removeDirectoryRecursively($tmpRoot);
+        }
+    }
+
+    public function testBackupFailureThrowsApiExceptionAndPatchManifestCleansCreatedFilesOnRollback(): void
+    {
+        $tmpRoot = $this->createIsolatedOtaTempRoot('manifest_rb');
+        @mkdir($tmpRoot . '/app/adminapi/controller/system', 0755, true);
+        @mkdir($tmpRoot . '/public', 0755, true);
+
+        $origIndex = "<?php\n// public entry v1\n";
+        $origRouter = "<?php\n// router v1\n";
+        $origDeployJs = "// deploy check v1\n";
+        $origCore = "<?php\nreturn 'core-v1';\n";
+        $sqlitePath = $tmpRoot . '/runtime/site_data.sqlite';
+        file_put_contents($sqlitePath, 'SQLITE_SNAPSHOT_PAYLOAD_V1');
+
+        file_put_contents($tmpRoot . '/version.json', json_encode(['version' => '1.6.5'], JSON_UNESCAPED_UNICODE));
+        file_put_contents($tmpRoot . '/config/hwadmin.php', "<?php\nreturn ['version' => '1.6.5'];\n");
+        file_put_contents($tmpRoot . '/core/ExistingKernel.php', $origCore);
+        file_put_contents($tmpRoot . '/public/index.php', $origIndex);
+        file_put_contents($tmpRoot . '/public/router.php', $origRouter);
+        file_put_contents($tmpRoot . '/public/deployment-check.js', $origDeployJs);
+
+        $isolatedApp = new \think\App($tmpRoot);
+        $isolatedApp->config->set([
+            'default'     => 'sqlite',
+            'connections' => [
+                'sqlite' => [
+                    'type'     => 'sqlite',
+                    'database' => $sqlitePath,
+                ],
+            ],
+        ], 'database');
+
+        $updater = new SystemUpdater($isolatedApp);
+
+        try {
+            // 反例：ZipArchive 打开/写入不可写路径时必须抛出 ApiException 阻断，禁止产生 0 KB 空备份
+            $rmZipDir = new \ReflectionMethod($updater, 'zipDirectoryToFile');
+            $rmZipDir->setAccessible(true);
+            $badZipDest = $tmpRoot . '/nonexistent_parent_dir/fail_backup.zip';
+            try {
+                $rmZipDir->invoke($updater, $tmpRoot . '/core', $badZipDest);
+                $this->fail('zipDirectoryToFile 写入失败必须抛出 ApiException');
+            } catch (ApiException $e) {
+                $this->assertStringContainsString('失败', $e->getMessage());
+            }
+            $this->assertFileDoesNotExist($badZipDest);
+
+            $rmZipApp = new \ReflectionMethod($updater, 'zipAppCoreFiles');
+            $rmZipApp->setAccessible(true);
+            file_put_contents($tmpRoot . '/app/common.php', "<?php\n");
+            try {
+                $rmZipApp->invoke($updater, $tmpRoot . '/app', $badZipDest);
+                $this->fail('zipAppCoreFiles 写入失败必须抛出 ApiException');
+            } catch (ApiException $e) {
+                $this->assertStringContainsString('失败', $e->getMessage());
+            }
+            $this->assertFileDoesNotExist($badZipDest);
+
+            // 正例：backupFramework 产出 public_entry.zip 与 database.sqlite
+            $backupId = $updater->backupFramework('1.6.5');
+            $backupDir = $tmpRoot . '/runtime/backups/' . $backupId . '/';
+            $this->assertFileExists($backupDir . 'public_entry.zip');
+            $this->assertFileExists($backupDir . 'database.sqlite');
+            $this->assertSame('SQLITE_SNAPSHOT_PAYLOAD_V1', file_get_contents($backupDir . 'database.sqlite'));
+
+            // 应用含修改与新增文件的补丁，传入 $backupDir 以记录 patch_manifest.json
+            $patchZip = $tmpRoot . '/upgrade_with_new_files.zip';
+            $zip = new \ZipArchive();
+            $this->assertTrue($zip->open($patchZip, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === true);
+            $zip->addFromString('server/core/ExistingKernel.php', "<?php\nreturn 'core-v2';\n");
+            $zip->addFromString('server/public/index.php', "<?php\n// public entry v2\n");
+            $zip->addFromString('server/core/new_sub/NewKernelHelper.php', "<?php\nreturn 'new-helper';\n");
+            $zip->addFromString('server/database/migrations/20261125000099_new_migration.php', "<?php\n");
+            $zip->close();
+
+            $applied = $updater->applyPatchArchive($patchZip, false, $backupDir);
+            $this->assertSame(4, $applied);
+            $this->assertFileExists($backupDir . 'patch_manifest.json');
+            $manifest = json_decode((string) file_get_contents($backupDir . 'patch_manifest.json'), true);
+            $this->assertContains('core/new_sub/NewKernelHelper.php', $manifest['created_files'] ?? []);
+            $this->assertContains('database/migrations/20261125000099_new_migration.php', $manifest['created_files'] ?? []);
+            $this->assertNotContains('core/ExistingKernel.php', $manifest['created_files'] ?? []);
+
+            // 回滚后：原有入口与核心文件还原，且新版新增的残留文件被精准清理
+            $rb = $updater->rollbackUpdate($backupId);
+            $this->assertTrue($rb['success']);
+            $this->assertSame($origCore, file_get_contents($tmpRoot . '/core/ExistingKernel.php'));
+            $this->assertSame($origIndex, file_get_contents($tmpRoot . '/public/index.php'));
+            $this->assertSame($origRouter, file_get_contents($tmpRoot . '/public/router.php'));
+            $this->assertSame($origDeployJs, file_get_contents($tmpRoot . '/public/deployment-check.js'));
+            $this->assertFileDoesNotExist($tmpRoot . '/core/new_sub/NewKernelHelper.php');
+            $this->assertDirectoryDoesNotExist($tmpRoot . '/core/new_sub');
+            $this->assertFileDoesNotExist($tmpRoot . '/database/migrations/20261125000099_new_migration.php');
+        } finally {
+            $this->removeDirectoryRecursively($tmpRoot);
+        }
+    }
+
+    public function testUpdateFrameworkAutoRollsBackWhenMigrateRunFailsOrOutputsError(): void
+    {
+        $tmpRoot = $this->createIsolatedOtaTempRoot('migrate_rb');
+        file_put_contents($tmpRoot . '/version.json', json_encode(['version' => '1.6.5'], JSON_UNESCAPED_UNICODE));
+        file_put_contents($tmpRoot . '/core/KernelFlag.php', "<?php\nreturn 'v1.6.5';\n");
+
+        $patchZip = $tmpRoot . '/patch_v166.zip';
+        $zip = new \ZipArchive();
+        $this->assertTrue($zip->open($patchZip, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === true);
+        $zip->addFromString('server/version.json', json_encode(['version' => '1.6.6'], JSON_UNESCAPED_UNICODE));
+        $zip->addFromString('server/core/KernelFlag.php', "<?php\nreturn 'v1.6.6';\n");
+        $zip->addFromString('server/core/MigrationFailNewFile.php', "<?php\nreturn 'should-be-cleaned';\n");
+        $zip->close();
+
+        $isolatedApp = new \think\App($tmpRoot);
+        $updater = new class($isolatedApp, $patchZip) extends SystemUpdater {
+            public string $mode = 'throw';
+
+            public function __construct(\think\App $app, private string $localPatchZip)
+            {
+                parent::__construct($app);
+            }
+
+            protected function downloadAndApplyPatch(
+                string $url,
+                ?string $expectedSha256 = null,
+                bool $preserveFrontend = false,
+                ?string $backupDir = null
+            ): void {
+                $this->verifyAndApplyPatchArchive($this->localPatchZip, $expectedSha256, $preserveFrontend, $backupDir);
+            }
+
+            protected function executeMigrateRun(): mixed
+            {
+                if ($this->mode === 'throw') {
+                    throw new \RuntimeException('SQLSTATE[42S01]: Base table or view already exists');
+                }
+                return new class {
+                    public function fetch(): string
+                    {
+                        return " == 20261125000001 Probe: migrating\nSQLSTATE[HY000]: General error: migration failed\n";
+                    }
+                };
+            }
+        };
+
+        try {
+            // 场景 1：migrate:run 抛出异常 -> 自动回滚并抛出 ApiException
+            try {
+                $updater->updateFramework('https://hw.baotoutv.cn/api/plugin/market/gateway/downloadFramework?version=1.6.6');
+                $this->fail('migrate:run 抛出异常时 updateFramework 必须自动回滚并抛出 ApiException');
+            } catch (ApiException $e) {
+                $this->assertStringContainsString('已自动回滚', $e->getMessage());
+                $this->assertStringContainsString('SQLSTATE', $e->getMessage());
+            }
+            $this->assertSame("<?php\nreturn 'v1.6.5';\n", file_get_contents($tmpRoot . '/core/KernelFlag.php'));
+            $this->assertFileDoesNotExist($tmpRoot . '/core/MigrationFailNewFile.php');
+            $verAfterThrow = json_decode((string) file_get_contents($tmpRoot . '/version.json'), true);
+            $this->assertSame('1.6.5', $verAfterThrow['version'] ?? '');
+
+            // 场景 2：migrate:run 吞异常仅输出 SQLSTATE/Error 文本 -> 同样触发自动回滚并抛出 ApiException
+            $updater->mode = 'output_error';
+            try {
+                $updater->updateFramework('https://hw.baotoutv.cn/api/plugin/market/gateway/downloadFramework?version=1.6.6');
+                $this->fail('migrate:run 输出包含 SQLSTATE 时 updateFramework 必须自动回滚并抛出 ApiException');
+            } catch (ApiException $e) {
+                $this->assertStringContainsString('已自动回滚', $e->getMessage());
+                $this->assertStringContainsString('SQLSTATE', $e->getMessage());
+            }
+            $this->assertSame("<?php\nreturn 'v1.6.5';\n", file_get_contents($tmpRoot . '/core/KernelFlag.php'));
+            $this->assertFileDoesNotExist($tmpRoot . '/core/MigrationFailNewFile.php');
+        } finally {
+            $this->removeDirectoryRecursively($tmpRoot);
+        }
+    }
+
+    public function testFindCustomAppModulesDetectsApiIndexServiceAndCustomPlugins(): void
+    {
+        $tmpRoot = $this->createIsolatedOtaTempRoot('custom_scan');
+        foreach ([
+            'app/adminapi/controller/Index.php',
+            'app/api/controller/Index.php',
+            'app/api/controller/User.php',
+            'app/index/controller/Index.php',
+            'app/common/model/Config.php',
+            'app/common/service/ConfigService.php',
+            'app/common/service/DictService.php',
+            'app/common/service/DeploymentService.php',
+            'plugins/cms/plugin.json',
+            'plugins/crud/plugin.json',
+            'plugins/demo/plugin.json',
+        ] as $builtinRel) {
+            $full = $tmpRoot . '/' . $builtinRel;
+            @mkdir(dirname($full), 0755, true);
+            file_put_contents($full, "<?php\n");
+        }
+
+        $isolatedApp = new \think\App($tmpRoot);
+        $updater = new SystemUpdater($isolatedApp);
+
+        try {
+            // 基线全为官方内置文件与内置插件 -> legacy_clean
+            $baseline = $updater->detectFrontendStatus();
+            $this->assertSame('legacy_clean', $baseline['mode']);
+            $this->assertFalse($baseline['preserve_frontend_default']);
+
+            $cases = [
+                'app/api/controller/Order.php'         => 'Order.php',
+                'app/common/service/PayService.php'    => 'PayService.php',
+                'app/index/controller/Landing.php'     => 'Landing.php',
+                'plugins/custom_shop/plugin.json'      => 'plugins/custom_shop',
+            ];
+
+            foreach ($cases as $rel => $expectedFragment) {
+                $full = $tmpRoot . '/' . $rel;
+                @mkdir(dirname($full), 0755, true);
+                file_put_contents($full, "<?php\n");
+
+                $status = $updater->detectFrontendStatus();
+                $this->assertSame('legacy_custom_suspected', $status['mode'], "应检出自定义模块 [{$rel}]");
+                $this->assertTrue($status['is_custom']);
+                $this->assertTrue($status['preserve_frontend_default']);
+                $this->assertStringContainsString($expectedFragment, $status['reason']);
+
+                @unlink($full);
+                if (str_starts_with($rel, 'plugins/')) {
+                    @rmdir(dirname($full));
+                }
+            }
+        } finally {
+            $this->removeDirectoryRecursively($tmpRoot);
+        }
+    }
+
+    public function testAssetPublisherPublishPreservesCustomUserFiles(): void
+    {
+        $probePlugin = '_ota_asset_probe_' . bin2hex(random_bytes(3));
+        $pluginPubDir = plugin_path($probePlugin) . 'public';
+        $targetDir = AssetPublisher::target($probePlugin);
+        @mkdir($pluginPubDir . DIRECTORY_SEPARATOR . 'sub', 0755, true);
+
+        try {
+            file_put_contents($pluginPubDir . DIRECTORY_SEPARATOR . 'app.js', 'console.log("v1");');
+            file_put_contents($pluginPubDir . DIRECTORY_SEPARATOR . 'sub' . DIRECTORY_SEPARATOR . 'theme.css', 'body{}');
+            AssetPublisher::publish($probePlugin);
+
+            // 模拟用户在 public/plugins/{name}/ 中放入自定义静态文件
+            file_put_contents($targetDir . DIRECTORY_SEPARATOR . '.custom', 'keep-custom-marker');
+            file_put_contents($targetDir . DIRECTORY_SEPARATOR . 'custom-logo.png', 'CUSTOM_PNG');
+            file_put_contents($targetDir . DIRECTORY_SEPARATOR . 'sub' . DIRECTORY_SEPARATOR . 'override.css', '.x{color:red}');
+
+            // 插件发布新版本静态资源：应增量更新插件自身资源，同时保留用户自定义文件
+            file_put_contents($pluginPubDir . DIRECTORY_SEPARATOR . 'app.js', 'console.log("v2");');
+            AssetPublisher::publish($probePlugin);
+
+            $this->assertSame('console.log("v2");', file_get_contents($targetDir . DIRECTORY_SEPARATOR . 'app.js'));
+            $this->assertSame('keep-custom-marker', file_get_contents($targetDir . DIRECTORY_SEPARATOR . '.custom'));
+            $this->assertSame('CUSTOM_PNG', file_get_contents($targetDir . DIRECTORY_SEPARATOR . 'custom-logo.png'));
+            $this->assertSame('.x{color:red}', file_get_contents($targetDir . DIRECTORY_SEPARATOR . 'sub' . DIRECTORY_SEPARATOR . 'override.css'));
+        } finally {
+            $this->removeDirectoryRecursively(plugin_path($probePlugin));
+            $this->removeDirectoryRecursively($targetDir);
+        }
+    }
+
+    public function testPluginUpgradePreservesExistingFrontViewAndRollbackRestoresDisabledStatusAndCleansLeftovers(): void
+    {
+        $probePlugin = 'otaguardprobe';
+        $pluginDir = plugin_path($probePlugin);
+        $targetPublicDir = AssetPublisher::target($probePlugin);
+        $legacyViewDir = $this->app->getRootPath() . 'app' . DIRECTORY_SEPARATOR . 'index' . DIRECTORY_SEPARATOR . 'view' . DIRECTORY_SEPARATOR . $probePlugin;
+        $legacyViewFile = $legacyViewDir . DIRECTORY_SEPARATOR . 'index.html';
+
+        @mkdir($pluginDir . 'public', 0755, true);
+        @mkdir($legacyViewDir, 0755, true);
+
+        file_put_contents($pluginDir . 'plugin.json', json_encode([
+            'name'        => $probePlugin,
+            'title'       => 'OTA Guard Probe',
+            'version'     => '1.0.0',
+            'description' => 'probe',
+            'author'      => 'test',
+            'menus'       => [],
+            'config'      => [],
+        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        file_put_contents($pluginDir . 'public' . DIRECTORY_SEPARATOR . 'index.html', '<div>plugin-v1</div>');
+        file_put_contents($legacyViewFile, '<div>custom-site-view-keep-me</div>');
+
+        /** @var PluginManager $pm */
+        $pm = $this->app->make(PluginManager::class);
+        /** @var SystemUpdater $updater */
+        $updater = $this->app->make(SystemUpdater::class);
+
+        try {
+            $pm->install($probePlugin, true);
+
+            // 1. 启用状态插件本地升级：已存在的 app/index/view/{name}/index.html 绝不可被覆写
+            file_put_contents($pluginDir . 'public' . DIRECTORY_SEPARATOR . 'index.html', '<div>plugin-v1.1</div>');
+            $resOk = $updater->updatePlugin($probePlugin);
+            $this->assertTrue($resOk['success']);
+            $this->assertSame('<div>custom-site-view-keep-me</div>', file_get_contents($legacyViewFile));
+
+            // 若目标前台视图原本不存在，则允许初始化复制
+            @unlink($legacyViewFile);
+            $resInit = $updater->updatePlugin($probePlugin);
+            $this->assertTrue($resInit['success']);
+            $this->assertSame('<div>plugin-v1.1</div>', file_get_contents($legacyViewFile));
+
+            // 2. 原为禁用状态（status=0）的插件升级失败回滚：恢复 status=0、清理新版残留文件、且不错误发布静态资源
+            $pm->disable($probePlugin);
+            $this->assertDirectoryDoesNotExist($targetPublicDir);
+
+            // 备份当前 1.2.0 禁用状态快照
+            $disabledBackupId = $updater->backupPlugin($probePlugin);
+
+            // 模拟写入了新版残留文件并触发升级失败（upgrade.sql 含非法 SQL）
+            file_put_contents($pluginDir . 'NewBrokenFeature.php', "<?php\n// leftover\n");
+            file_put_contents($pluginDir . 'upgrade.sql', 'THIS IS INVALID SQL FOR ROLLBACK TEST;');
+            try {
+                $updater->updatePlugin($probePlugin);
+                $this->fail('包含非法 upgrade.sql 时 updatePlugin 必须抛出 ApiException');
+            } catch (ApiException $e) {
+                $this->assertStringContainsString('插件升级失败', $e->getMessage());
+            }
+
+            // updatePlugin 内部备份是在写入 upgrade.sql 之后，验证针对 clean 快照的回滚精准清理残留并维持禁用状态
+            file_put_contents($pluginDir . 'NewBrokenFeature.php', "<?php\n// leftover\n");
+            Db::name('plugin')->where('name', $probePlugin)->update(['status' => 1, 'version' => '9.9.9']);
+            $updater->rollbackUpdate($disabledBackupId);
+
+            $rowAfterRb = Db::name('plugin')->where('name', $probePlugin)->find();
+            $this->assertNotNull($rowAfterRb);
+            $this->assertSame(0, (int) $rowAfterRb['status'], '回滚必须恢复原禁用 status=0');
+            $this->assertFileDoesNotExist($pluginDir . 'NewBrokenFeature.php', '回滚插件前必须清理新版残留文件');
+            $this->assertDirectoryDoesNotExist($targetPublicDir, '原为禁用状态的插件回滚时不得错误发布静态资源');
+        } finally {
+            try {
+                if (Db::name('plugin')->where('name', $probePlugin)->find()) {
+                    $pm->uninstall($probePlugin);
+                }
+            } catch (\Throwable) {
+                Db::name('plugin')->where('name', $probePlugin)->delete();
+            }
+            $this->removeDirectoryRecursively($pluginDir);
+            $this->removeDirectoryRecursively($targetPublicDir);
+            $this->removeDirectoryRecursively($legacyViewDir);
+            foreach (glob($this->app->getRuntimePath() . 'backups/*_plugin_' . $probePlugin . '_*.zip') ?: [] as $bakZip) {
+                @unlink($bakZip);
+            }
         }
     }
 

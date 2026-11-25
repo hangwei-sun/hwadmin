@@ -20,7 +20,7 @@ final class AssetPublisher
             return;
         }
         $dst = self::target($name);
-        self::remove($dst);
+        // 增量覆写同步插件静态资源，保留用户自定义静态文件（如 .custom 或扩展资源）
         self::copy($src, $dst);
     }
 

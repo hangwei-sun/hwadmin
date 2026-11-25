@@ -650,7 +650,7 @@ const trendViewMode = ref<'7d' | 'realtime'>('7d')
 const frameworkInfo = reactive<FrameworkReleaseInfo>({
   name: 'hwadmin',
   current_version: '',
-  latest_version: '1.6.6',
+  latest_version: '1.6.7',
   has_update: false,
   update_channel: 'stable',
   release_channel: 'stable',
@@ -862,7 +862,7 @@ const tooltipStyle = computed(() => {
 })
 
 const displayCurrentVersion = computed(() => {
-  return frameworkInfo.current_version || systemInfo.hw_version || '1.6.6'
+  return frameworkInfo.current_version || systemInfo.hw_version || '1.6.7'
 })
 
 const openFrameworkBackupDialog = async () => {

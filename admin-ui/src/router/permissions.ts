@@ -9,6 +9,7 @@ import { useRoutesStore } from '/@/store/modules/routes'
 import { useSettingsStore } from '/@/store/modules/settings'
 import { useUserStore } from '/@/store/modules/user'
 import getPageTitle from '/@/utils/pageTitle'
+import { isChunkLoadError, recoverFromChunkError } from '/@/utils/chunkRecovery'
 import { handleActivePath, toLoginRoute } from '/@/utils/routes'
 
 export const setupPermissions = (router: Router) => {
@@ -84,7 +85,10 @@ export const setupPermissions = (router: Router) => {
   })
 
   router.onError((error: any) => {
-    console.error('HwAdmin 路由错误:', error.message)
+    console.error('HwAdmin 路由错误:', error?.message || error)
+    if (isChunkLoadError(error)) {
+      recoverFromChunkError()
+    }
   })
 
   return router

@@ -161,6 +161,7 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { updateSystemFramework } from '/@/api/hwadmin'
+import { $clearPWACache } from '/@/hooks'
 
 export interface FrontendStatusInfo {
   mode: 'official' | 'custom' | 'legacy_custom_suspected' | 'legacy_clean' | string
@@ -293,14 +294,7 @@ const handleConfirm = async () => {
       emit('update:visible', false)
       emit('updated')
       window.setTimeout(async () => {
-        try {
-          if (typeof caches !== 'undefined' && caches?.keys) {
-            const keys = await caches.keys()
-            await Promise.all(keys.map((k) => caches.delete(k)))
-          }
-        } catch {
-          // 忽略浏览器 CacheStorage 清理异常
-        }
+        await $clearPWACache()
         window.location.reload()
       }, 800)
     } else {

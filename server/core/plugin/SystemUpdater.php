@@ -25,7 +25,7 @@ use RecursiveIteratorIterator;
  */
 class SystemUpdater
 {
-    public const CURRENT_VERSION = '1.6.6';
+    public const CURRENT_VERSION = '1.6.7';
     public const CHANNEL_STABLE = 'stable';
     public const CHANNEL_BETA = 'beta';
     public const VALID_CHANNELS = [self::CHANNEL_STABLE, self::CHANNEL_BETA];
@@ -66,6 +66,97 @@ class SystemUpdater
         'system/CrontabLog.php',
         'system/Dict.php',
         'system/DictItem.php',
+    ];
+
+    /**
+     * 官方内置前端 API 控制器文件名列表（用于无指纹历史站二开探测）
+     */
+    private const OFFICIAL_API_CONTROLLERS = [
+        'Index.php',
+        'User.php',
+    ];
+
+    /**
+     * 官方内置前台控制器文件名列表（用于无指纹历史站二开探测）
+     */
+    private const OFFICIAL_INDEX_CONTROLLERS = [
+        'Index.php',
+    ];
+
+    /**
+     * 官方内置公共服务文件名列表（用于无指纹历史站二开探测）
+     */
+    private const OFFICIAL_COMMON_SERVICES = [
+        'ConfigService.php',
+        'DeploymentService.php',
+        'DictService.php',
+    ];
+
+    /**
+     * 官方内置源码插件目录名列表（用于无指纹历史站二开探测）
+     */
+    private const OFFICIAL_BUILTIN_PLUGINS = [
+        'cms',
+        'crud',
+        'demo',
+    ];
+
+    /**
+     * 站点级保护文件：仅当目标站点尚不存在时允许初始化写入，已存在时严格跳过覆写
+     */
+    private const SITE_PRESERVE_IF_EXISTS_PATHS = [
+        'config/hwadmin.php',
+        'public/.htaccess',
+        'public/nginx.htaccess',
+        'public/favicon.ico',
+        'public/admin/hwadmin.config.js',
+    ];
+
+    /**
+     * 客户端允许 OTA 补丁写入的框架路径前缀白名单
+     */
+    private const ALLOWED_FRAMEWORK_PATCH_PREFIXES = [
+        'core/',
+        'public/admin/',
+        'database/migrations/',
+        'app/adminapi/controller/system/',
+        'app/adminapi/controller/auth/',
+        'app/common/model/system/',
+    ];
+
+    /**
+     * 客户端允许 OTA 补丁写入的框架精确文件路径白名单
+     */
+    private const ALLOWED_FRAMEWORK_PATCH_FILES = [
+        'version.json',
+        'config/hwadmin.php',
+        'app/adminapi/controller/Index.php',
+        'app/adminapi/controller/Dashboard.php',
+        'app/common/model/Admin.php',
+        'app/common/model/AdminLog.php',
+        'app/common/model/Attachment.php',
+        'app/common/model/AuthGroup.php',
+        'app/common/model/AuthRule.php',
+        'app/common/model/Config.php',
+        'app/common/service/ConfigService.php',
+        'app/common/service/DictService.php',
+        'app/common/service/DeploymentService.php',
+        'app/index/controller/Index.php',
+        'public/index.php',
+        'public/.htaccess',
+        'public/nginx.htaccess',
+        'public/favicon.ico',
+        'public/router.php',
+        'public/deployment-check.js',
+    ];
+
+    /**
+     * 升级前需要额外备份的 public/ 入口与部署探测文件
+     */
+    private const PUBLIC_ENTRY_BACKUP_FILES = [
+        'index.php',
+        'router.php',
+        'deployment-check.js',
     ];
 
     /**
@@ -617,7 +708,7 @@ class SystemUpdater
     }
 
     /**
-     * 扫描 app/adminapi/controller/ 与 app/common/model/ 下是否存在非官方内置的业务文件
+     * 扫描内置业务目录及 plugins/ 下是否存在非官方内置的二开模块
      *
      * @return string[]
      */
@@ -626,6 +717,9 @@ class SystemUpdater
         $targets = [
             'app/adminapi/controller' => array_flip(self::OFFICIAL_ADMIN_CONTROLLERS),
             'app/common/model'        => array_flip(self::OFFICIAL_COMMON_MODELS),
+            'app/api/controller'      => array_flip(self::OFFICIAL_API_CONTROLLERS),
+            'app/index/controller'    => array_flip(self::OFFICIAL_INDEX_CONTROLLERS),
+            'app/common/service'      => array_flip(self::OFFICIAL_COMMON_SERVICES),
         ];
 
         $customFiles = [];
@@ -658,6 +752,19 @@ class SystemUpdater
             }
         }
 
+        $pluginsDir = $rootPath . 'plugins';
+        if (is_dir($pluginsDir)) {
+            $officialPluginSet = array_flip(self::OFFICIAL_BUILTIN_PLUGINS);
+            foreach (scandir($pluginsDir) ?: [] as $entry) {
+                if ($entry === '.' || $entry === '..' || str_starts_with($entry, '.')) {
+                    continue;
+                }
+                if (is_dir($pluginsDir . '/' . $entry) && !isset($officialPluginSet[$entry])) {
+                    $customFiles[] = 'plugins/' . $entry;
+                }
+            }
+        }
+
         sort($customFiles);
         return $customFiles;
     }
@@ -684,12 +791,13 @@ class SystemUpdater
         $targetVer = self::CURRENT_VERSION;
         $versionFile = $this->app->getRootPath() . 'version.json';
 
-        // 1. 升级前执行主框架全量备份（含 core/、public/admin/、app/ 核心文件及配置）
+        // 1. 升级前执行主框架全量备份（含 core/、public/admin/、app/ 核心文件、入口文件、配置与 SQLite 快照）
         $backupId = $this->backupFramework($currentVer);
+        $backupDir = $this->runtimeBackupDir . $backupId . DIRECTORY_SEPARATOR;
 
-        // 2. 若提供了远程下载包，执行下载与补丁解压覆盖
+        // 2. 若提供了远程下载包，执行下载与补丁解压覆盖（失败若已落盘则自动回滚）
         if ($packageUrl !== null && $packageUrl !== '') {
-            $this->downloadAndApplyPatch($packageUrl, $normalizedSha256, $effectivePreserveFrontend);
+            $this->downloadAndApplyPatch($packageUrl, $normalizedSha256, $effectivePreserveFrontend, $backupDir);
             $targetVer = self::resolvePatchedVersion($versionFile, $packageUrl, $targetVer);
         }
 
@@ -702,13 +810,22 @@ class SystemUpdater
             'author'       => 'HwAdmin Team',
             'description'  => '基于 ThinkPHP 8.1 + ThinkORM 4 + Vue 3 的现代化敏捷管理后台基座',
         ];
-        file_put_contents($versionFile, json_encode($versionData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        if (@file_put_contents($versionFile, json_encode($versionData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) === false) {
+            $this->rollbackAfterFrameworkFailure($backupId, $currentVer, '无法写入 version.json');
+        }
 
-        // 4. 执行 Phinx 增量迁移 (若有新表结构或字段)
+        // 4. 执行 Phinx 增量迁移（严禁静默吞掉异常，任何报错立即回滚并阻断）
         try {
-            \think\facade\Console::call('migrate:run');
+            $output = $this->executeMigrateRun();
+            $text = is_object($output) && method_exists($output, 'fetch')
+                ? (string) $output->fetch()
+                : (is_string($output) ? $output : '');
+            if ($text !== '' && (stripos($text, 'exception') !== false || stripos($text, 'sqlstate') !== false || stripos($text, 'error') !== false)) {
+                throw new ApiException('数据库迁移输出异常：' . trim($text));
+            }
         } catch (Throwable $e) {
-            $this->app->log->warning('[updater] 框架升级迁移自动执行日志: ' . $e->getMessage());
+            $this->logMessage('error', '[updater] 框架升级数据库迁移失败: ' . $e->getMessage());
+            $this->rollbackAfterFrameworkFailure($backupId, $currentVer, '数据库迁移失败：' . $e->getMessage());
         }
 
         // 5. 清理系统运行时缓存
@@ -725,6 +842,29 @@ class SystemUpdater
             'frontend_preserved' => $effectivePreserveFrontend,
             'msg'                => "HwAdmin 主框架已成功升级至最新版本 v{$targetVer}{$modeHint}！",
         ];
+    }
+
+    /**
+     * 执行框架增量数据库迁移命令（独立封装便于测试替身注入）
+     */
+    protected function executeMigrateRun(): mixed
+    {
+        return \think\facade\Console::call('migrate:run');
+    }
+
+    /**
+     * 框架升级关键步骤失败后的自动原子回滚并抛出清晰 ApiException
+     */
+    protected function rollbackAfterFrameworkFailure(string $backupId, string $fromVersion, string $reason): never
+    {
+        $rollbackNote = '';
+        try {
+            $this->rollbackUpdate($backupId);
+        } catch (Throwable $rollbackEx) {
+            $this->logMessage('warning', "[updater] 框架升级失败后自动回滚异常: " . $rollbackEx->getMessage());
+            $rollbackNote = "（自动回滚异常：{$rollbackEx->getMessage()}）";
+        }
+        throw new ApiException("框架升级失败，已自动回滚至 v{$fromVersion}：{$reason}{$rollbackNote}");
     }
 
     /**
@@ -847,14 +987,21 @@ class SystemUpdater
             $state = Db::name('plugin')->where('name', $name)->find();
             if ($state !== null) {
                 $pluginManager->upgrade($name);
+                $state = Db::name('plugin')->where('name', $name)->find();
             }
 
-            // 5. 重新发布插件静态资源，并同步覆盖遗留前台覆盖视图（避免同请求旧版 Plugin 类常驻内存未执行同步）
-            AssetPublisher::publish($name);
-            $pluginFrontIndex = $pluginDir . 'public' . DIRECTORY_SEPARATOR . 'index.html';
-            $legacyFrontView = $this->app->getRootPath() . 'app' . DIRECTORY_SEPARATOR . 'index' . DIRECTORY_SEPARATOR . 'view' . DIRECTORY_SEPARATOR . $name . DIRECTORY_SEPARATOR . 'index.html';
-            if (is_file($pluginFrontIndex) && is_file($legacyFrontView)) {
-                @copy($pluginFrontIndex, $legacyFrontView);
+            // 5. 仅当插件处于启用状态时重新发布插件静态资源；遗留前台视图仅当不存在时才初始化，绝不覆写站点已有视图
+            if ($state !== null && (int) ($state['status'] ?? 0) === 1) {
+                AssetPublisher::publish($name);
+                $pluginFrontIndex = $pluginDir . 'public' . DIRECTORY_SEPARATOR . 'index.html';
+                $legacyFrontView = $this->app->getRootPath() . 'app' . DIRECTORY_SEPARATOR . 'index' . DIRECTORY_SEPARATOR . 'view' . DIRECTORY_SEPARATOR . $name . DIRECTORY_SEPARATOR . 'index.html';
+                if (is_file($pluginFrontIndex) && !is_file($legacyFrontView)) {
+                    $legacyFrontDir = dirname($legacyFrontView);
+                    if (!is_dir($legacyFrontDir)) {
+                        @mkdir($legacyFrontDir, 0755, true);
+                    }
+                    @copy($pluginFrontIndex, $legacyFrontView);
+                }
             }
 
             // 6. 清除缓存
@@ -875,7 +1022,7 @@ class SystemUpdater
             try {
                 $this->rollbackUpdate($backupId);
             } catch (Throwable $rollbackEx) {
-                $this->app->log->warning("[updater] 插件 {$name} 升级失败后自动回滚异常: " . $rollbackEx->getMessage());
+                $this->logMessage('warning', "[updater] 插件 {$name} 升级失败后自动回滚异常: " . $rollbackEx->getMessage());
                 $rollbackNote = "（回滚恢复提示：{$rollbackEx->getMessage()}）";
             }
             if ($e instanceof ApiException) {
@@ -886,29 +1033,32 @@ class SystemUpdater
     }
 
     /**
-     * 备份当前框架核心代码、前端静态构建产物、app/ 核心文件及配置
+     * 备份当前框架核心代码、前端静态构建产物、app/ 核心文件、入口文件、配置与 SQLite 数据库快照
      */
     public function backupFramework(string $version): string
     {
         $timeStr = date('Ymd_His');
         $backupId = "{$timeStr}_framework_{$version}";
+        if (is_dir($this->runtimeBackupDir . $backupId)) {
+            $backupId .= '_' . bin2hex(random_bytes(3));
+        }
         $targetDir = $this->runtimeBackupDir . $backupId . DIRECTORY_SEPARATOR;
-        if (!is_dir($targetDir)) {
-            @mkdir($targetDir, 0755, true);
+        if (!is_dir($targetDir) && !@mkdir($targetDir, 0755, true) && !is_dir($targetDir)) {
+            throw new ApiException("无法创建框架备份目录：{$targetDir}");
         }
 
         $rootPath = $this->app->getRootPath();
 
         // 备份 version.json
         $versionFile = $rootPath . 'version.json';
-        if (is_file($versionFile)) {
-            @copy($versionFile, $targetDir . 'version.json');
+        if (is_file($versionFile) && !@copy($versionFile, $targetDir . 'version.json')) {
+            throw new ApiException('备份 version.json 失败');
         }
 
         // 备份 config/hwadmin.php
         $configPath = $this->app->getConfigPath();
-        if (is_file($configPath . 'hwadmin.php')) {
-            @copy($configPath . 'hwadmin.php', $targetDir . 'hwadmin.php');
+        if (is_file($configPath . 'hwadmin.php') && !@copy($configPath . 'hwadmin.php', $targetDir . 'hwadmin.php')) {
+            throw new ApiException('备份 config/hwadmin.php 失败');
         }
 
         // 备份核心框架目录 core/
@@ -932,11 +1082,45 @@ class SystemUpdater
             $this->zipAppCoreFiles($appDir, $appCoreZip);
         }
 
-        $totalBytes = (is_file($targetDir . 'version.json') ? (int) filesize($targetDir . 'version.json') : 0)
-            + (is_file($targetDir . 'hwadmin.php') ? (int) filesize($targetDir . 'hwadmin.php') : 0)
-            + (is_file($coreZip) ? (int) filesize($coreZip) : 0)
-            + (is_file($publicAdminZip) ? (int) filesize($publicAdminZip) : 0)
-            + (is_file($appCoreZip) ? (int) filesize($appCoreZip) : 0);
+        // 备份 public/ 入口与部署检查文件（index.php、router.php、deployment-check.js）
+        $publicDir = $rootPath . 'public';
+        $publicEntryZip = $targetDir . 'public_entry.zip';
+        if (is_dir($publicDir)) {
+            $this->zipPublicEntryFiles($publicDir, $publicEntryZip);
+        }
+
+        // 若当前为 SQLite 驱动，自动快照数据库文件
+        $sqliteBackup = $targetDir . 'database.sqlite';
+        $sqlitePath = $this->resolveSqliteDatabasePath();
+        if ($sqlitePath !== '' && is_file($sqlitePath)) {
+            try {
+                if (strtolower((string) (Db::connect()->getConfig('type') ?? '')) === 'sqlite') {
+                    $activePath = (string) (Db::connect()->getConfig('database') ?? '');
+                    if ($activePath !== '' && (realpath($activePath) === realpath($sqlitePath) || $activePath === $sqlitePath)) {
+                        Db::execute('PRAGMA wal_checkpoint(TRUNCATE)');
+                    }
+                }
+            } catch (Throwable) {
+            }
+            if (!@copy($sqlitePath, $sqliteBackup)) {
+                throw new ApiException("备份 SQLite 数据库快照失败：{$sqliteBackup}");
+            }
+        }
+
+        $totalBytes = 0;
+        foreach ([
+            $targetDir . 'version.json',
+            $targetDir . 'hwadmin.php',
+            $coreZip,
+            $publicAdminZip,
+            $appCoreZip,
+            $publicEntryZip,
+            $sqliteBackup,
+        ] as $artifact) {
+            if (is_file($artifact)) {
+                $totalBytes += (int) filesize($artifact);
+            }
+        }
         $sizeLabel = $totalBytes > 0 ? round($totalBytes / 1024, 1) . ' KB' : '0 KB';
 
         $meta = [
@@ -954,30 +1138,84 @@ class SystemUpdater
     }
 
     /**
+     * 解析当前激活配置的 SQLite 数据库文件路径（非 SQLite 驱动或内存库返回空串）
+     */
+    protected function resolveSqliteDatabasePath(): string
+    {
+        $dbConfig = [];
+        try {
+            $rawConfig = $this->app->config->get('database');
+            if (is_array($rawConfig) && !empty($rawConfig)) {
+                $dbConfig = $rawConfig;
+            }
+        } catch (Throwable) {
+        }
+
+        if (!empty($dbConfig)) {
+            $defaultConn = (string) ($dbConfig['default'] ?? '');
+            $conn = $defaultConn !== '' ? (array) ($dbConfig['connections'][$defaultConn] ?? []) : [];
+            $type = strtolower(trim((string) ($conn['type'] ?? '')));
+            if ($type !== 'sqlite') {
+                return '';
+            }
+            $dbPath = trim((string) ($conn['database'] ?? ''));
+        } else {
+            try {
+                $type = strtolower(trim((string) (Db::connect()->getConfig('type') ?? '')));
+                if ($type !== 'sqlite') {
+                    return '';
+                }
+                $dbPath = trim((string) (Db::connect()->getConfig('database') ?? ''));
+            } catch (Throwable) {
+                return '';
+            }
+        }
+
+        if ($dbPath === '' || $dbPath === ':memory:') {
+            return '';
+        }
+        if (!str_starts_with($dbPath, '/') && !preg_match('/^[A-Za-z]:[\\\\\/]/', $dbPath)) {
+            $dbPath = $this->app->getRootPath() . ltrim($dbPath, '/\\');
+        }
+        return $dbPath;
+    }
+
+    /**
+     * 备份 public/ 入口与部署探测文件到 public_entry.zip
+     */
+    protected function zipPublicEntryFiles(string $publicDir, string $zipFile): void
+    {
+        if (!is_dir($publicDir)) {
+            throw new ApiException("备份源目录不存在：{$publicDir}");
+        }
+        $normalizedRoot = rtrim(str_replace('\\', '/', $publicDir), '/') . '/';
+        $fileMap = [];
+        foreach (self::PUBLIC_ENTRY_BACKUP_FILES as $relPath) {
+            $fullPath = $normalizedRoot . $relPath;
+            if (is_file($fullPath)) {
+                $fileMap[$relPath] = $fullPath;
+            }
+        }
+        $this->createZipFromFileMap($zipFile, $fileMap, '入口文件备份');
+    }
+
+    /**
      * 备份被 OTA 覆盖范围的 app/ 核心文件（保留用户自建业务模块不冗余打包）
      */
     protected function zipAppCoreFiles(string $appDir, string $zipFile): void
     {
-        if (!class_exists(ZipArchive::class) || !is_dir($appDir)) {
-            return;
+        if (!is_dir($appDir)) {
+            throw new ApiException("备份源目录不存在：{$appDir}");
         }
         $normalizedAppRoot = rtrim(str_replace('\\', '/', $appDir), '/') . '/';
-        $zip = new ZipArchive();
-        if ($zip->open($zipFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            return;
-        }
-        $added = 0;
+        $fileMap = [];
         foreach (self::OFFICIAL_APP_CORE_FILES as $relPath) {
             $fullPath = $normalizedAppRoot . $relPath;
             if (is_file($fullPath)) {
-                $zip->addFile($fullPath, $relPath);
-                $added++;
+                $fileMap[$relPath] = $fullPath;
             }
         }
-        $zip->close();
-        if ($added === 0 && is_file($zipFile)) {
-            @unlink($zipFile);
-        }
+        $this->createZipFromFileMap($zipFile, $fileMap, 'app 核心文件备份');
     }
 
     /**
@@ -985,32 +1223,73 @@ class SystemUpdater
      */
     protected function zipDirectoryToFile(string $sourceDir, string $zipFile): void
     {
-        if (!class_exists(ZipArchive::class) || !is_dir($sourceDir)) {
-            return;
+        if (!is_dir($sourceDir)) {
+            throw new ApiException("备份源目录不存在：{$sourceDir}");
         }
         $normalizedRoot = rtrim((string) realpath($sourceDir), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
-        $zip = new ZipArchive();
-        if ($zip->open($zipFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            return;
-        }
         $files = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($normalizedRoot, RecursiveDirectoryIterator::SKIP_DOTS),
             RecursiveIteratorIterator::LEAVES_ONLY
         );
+        $fileMap = [];
         foreach ($files as $file) {
             if (!$file->isDir()) {
                 $filePath = $file->getRealPath();
                 if ($filePath !== false && str_starts_with($filePath, $normalizedRoot)) {
                     $relativePath = str_replace('\\', '/', substr($filePath, strlen($normalizedRoot)));
-                    $zip->addFile($filePath, $relativePath);
+                    $fileMap[$relativePath] = $filePath;
                 }
             }
         }
-        $zip->close();
+        $this->createZipFromFileMap($zipFile, $fileMap, '目录备份');
     }
 
     /**
-     * 备份插件源码至 ZIP 文件
+     * 将映射文件集合安全写入 ZIP 压缩包（失败硬阻断并清理残留空包）
+     *
+     * @param array<string, string> $fileMap [zipRelPath => localFilePath]
+     */
+    protected function createZipFromFileMap(string $zipFile, array $fileMap, string $contextLabel): int
+    {
+        if (!class_exists(ZipArchive::class)) {
+            throw new ApiException("当前 PHP 环境缺少 zip 扩展，无法完成{$contextLabel}");
+        }
+        if (empty($fileMap)) {
+            if (is_file($zipFile)) {
+                @unlink($zipFile);
+            }
+            return 0;
+        }
+        $zipDir = dirname($zipFile);
+        if (!is_dir($zipDir) || !is_writable($zipDir)) {
+            throw new ApiException("创建{$contextLabel}压缩包失败，目标目录不可写或不存在：{$zipDir}");
+        }
+        $zip = new ZipArchive();
+        if (@$zip->open($zipFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            throw new ApiException("创建{$contextLabel}压缩包失败，请检查目录写入权限：{$zipFile}");
+        }
+        $added = 0;
+        foreach ($fileMap as $relPath => $fullPath) {
+            if (!@$zip->addFile($fullPath, $relPath)) {
+                @$zip->close();
+                @unlink($zipFile);
+                throw new ApiException("写入{$contextLabel}压缩包条目失败：{$relPath}");
+            }
+            $added++;
+        }
+        if (@$zip->close() !== true) {
+            @unlink($zipFile);
+            throw new ApiException("保存{$contextLabel}压缩包失败，请检查磁盘空间与权限：{$zipFile}");
+        }
+        if ($added > 0 && (!is_file($zipFile) || filesize($zipFile) === 0)) {
+            @unlink($zipFile);
+            throw new ApiException("生成的{$contextLabel}压缩包为空（0 KB），已中止升级：{$zipFile}");
+        }
+        return $added;
+    }
+
+    /**
+     * 备份插件源码至 ZIP 文件（同时记录数据库原始启用状态）
      */
     public function backupPlugin(string $name): string
     {
@@ -1023,20 +1302,33 @@ class SystemUpdater
             $version = (string) ($manifest['version'] ?? '1.0.0');
         }
 
+        $originalStatus = null;
+        try {
+            $state = Db::name('plugin')->where('name', $name)->find();
+            if ($state !== null && isset($state['status'])) {
+                $originalStatus = (int) $state['status'];
+            }
+        } catch (Throwable) {
+        }
+
         $backupId = "{$timeStr}_plugin_{$name}_{$version}";
+        if (is_file($this->runtimeBackupDir . "{$backupId}.zip")) {
+            $backupId .= '_' . bin2hex(random_bytes(3));
+        }
         $zipFile = $this->runtimeBackupDir . "{$backupId}.zip";
         $this->zipDirectoryToFile($pluginDir, $zipFile);
 
         $size = is_file($zipFile) ? round(filesize($zipFile) / 1024, 1) . ' KB' : '0 KB';
 
         $meta = [
-            'id'         => $backupId,
-            'type'       => 'plugin',
-            'name'       => $name,
-            'version'    => $version,
-            'created_at' => date('Y-m-d H:i:s'),
-            'size'       => $size,
-            'path'       => $zipFile,
+            'id'            => $backupId,
+            'type'          => 'plugin',
+            'name'          => $name,
+            'version'       => $version,
+            'plugin_status' => $originalStatus,
+            'created_at'    => date('Y-m-d H:i:s'),
+            'size'          => $size,
+            'path'          => $zipFile,
         ];
 
         $this->saveBackupRecord($meta);
@@ -1114,6 +1406,11 @@ class SystemUpdater
                 $this->extractBackupZipSafely($appCoreZip, $rootPath . 'app', false);
             }
 
+            $publicEntryZip = $dir . 'public_entry.zip';
+            if (is_file($publicEntryZip)) {
+                $this->extractBackupZipSafely($publicEntryZip, $rootPath . 'public', false);
+            }
+
             if (is_file($dir . 'version.json')) {
                 @copy($dir . 'version.json', $rootPath . 'version.json');
             }
@@ -1124,6 +1421,8 @@ class SystemUpdater
                     @opcache_invalidate($configDest, true);
                 }
             }
+
+            $this->cleanupPatchManifestCreatedFiles($dir, $rootPath);
             $this->clearRuntimeCache();
 
             return [
@@ -1140,16 +1439,36 @@ class SystemUpdater
             $pluginDir = plugin_path($pluginName);
 
             if ($zipFile !== '' && is_file($zipFile)) {
-                $this->extractPluginPackageSafely($zipFile, $pluginDir, false);
+                // 回滚前清理新版在插件目录产生的残留文件，再还原旧版快照
+                $this->extractPluginPackageSafely($zipFile, $pluginDir, false, true);
             }
 
-            // 更新 plugin 表记录的版本号
-            Db::name('plugin')->where('name', $pluginName)->update([
+            $hasRecordedStatus = array_key_exists('plugin_status', $target) && $target['plugin_status'] !== null;
+            $targetStatus = $hasRecordedStatus ? (int) $target['plugin_status'] : null;
+
+            // 恢复 plugin 表记录的版本号与原始启用状态
+            $updateData = [
                 'version'     => $target['version'],
                 'update_time' => time(),
-            ]);
+            ];
+            if ($targetStatus !== null) {
+                $updateData['status'] = $targetStatus;
+            }
+            Db::name('plugin')->where('name', $pluginName)->update($updateData);
 
-            AssetPublisher::publish($pluginName);
+            $effectiveStatus = $targetStatus;
+            if ($effectiveStatus === null) {
+                $row = Db::name('plugin')->where('name', $pluginName)->find();
+                $effectiveStatus = $row !== null ? (int) ($row['status'] ?? 0) : 0;
+            }
+
+            if ($targetStatus !== null) {
+                MenuImporter::setStatus($pluginName, $targetStatus);
+            }
+            if ($effectiveStatus === 1) {
+                AssetPublisher::publish($pluginName);
+            }
+
             /** @var PluginManager $pluginManager */
             $pluginManager = $this->app->make(PluginManager::class);
             $pluginManager->clearCache();
@@ -1359,10 +1678,69 @@ class SystemUpdater
     }
 
     /**
+     * 依据 patch_manifest.json 精准删除升级期间新建的残留文件及空子目录
+     */
+    protected function cleanupPatchManifestCreatedFiles(string $backupDir, string $rootPath): void
+    {
+        $manifestFile = rtrim($backupDir, '/\\') . DIRECTORY_SEPARATOR . 'patch_manifest.json';
+        if (!is_file($manifestFile)) {
+            return;
+        }
+        $manifest = json_decode((string) file_get_contents($manifestFile), true);
+        $createdFiles = is_array($manifest) ? ($manifest['created_files'] ?? []) : [];
+        if (!is_array($createdFiles) || empty($createdFiles)) {
+            return;
+        }
+
+        $normRoot = rtrim(str_replace('\\', '/', $rootPath), '/') . '/';
+        $protectedBaseDirs = ['core', 'app', 'public', 'public/admin', 'config', 'database', 'database/migrations'];
+
+        foreach ($createdFiles as $rawRel) {
+            $rel = ltrim(str_replace('\\', '/', (string) $rawRel), '/');
+            if (
+                $rel === ''
+                || str_contains($rel, "\0")
+                || str_starts_with($rel, '/')
+                || preg_match('/^[A-Za-z]:/', $rel)
+                || in_array('..', explode('/', $rel), true)
+                || self::isProtectedPatchPath($rel)
+                || !self::isAllowedFrameworkPatchPath($rel)
+            ) {
+                continue;
+            }
+            $targetFile = $normRoot . $rel;
+            if (is_file($targetFile) || is_link($targetFile)) {
+                @unlink($targetFile);
+                if (str_ends_with(strtolower($targetFile), '.php') && function_exists('opcache_invalidate')) {
+                    @opcache_invalidate($targetFile, true);
+                }
+            }
+
+            $relDir = str_replace('\\', '/', dirname($rel));
+            while ($relDir !== '' && $relDir !== '.' && !in_array($relDir, $protectedBaseDirs, true)) {
+                $fullDir = $normRoot . $relDir;
+                if (!is_dir($fullDir)) {
+                    break;
+                }
+                $entries = @scandir($fullDir);
+                if (!is_array($entries) || count(array_diff($entries, ['.', '..'])) > 0) {
+                    break;
+                }
+                @rmdir($fullDir);
+                $relDir = str_replace('\\', '/', dirname($relDir));
+            }
+        }
+    }
+
+    /**
      * 校验补丁文件 SHA256（若提供预期摘要）并执行安全解压应用
      */
-    public function verifyAndApplyPatchArchive(string $zipPath, ?string $expectedSha256 = null, bool $preserveFrontend = false): int
-    {
+    public function verifyAndApplyPatchArchive(
+        string $zipPath,
+        ?string $expectedSha256 = null,
+        bool $preserveFrontend = false,
+        ?string $backupDir = null
+    ): int {
         $normalizedSha256 = self::normalizePatchSha256($expectedSha256);
         if ($normalizedSha256 !== null) {
             if (!is_file($zipPath)) {
@@ -1374,14 +1752,18 @@ class SystemUpdater
             }
         }
 
-        return $this->applyPatchArchive($zipPath, $preserveFrontend);
+        return $this->applyPatchArchive($zipPath, $preserveFrontend, $backupDir);
     }
 
     /**
      * 下载补丁并安全解压应用（保留站点环境配置、运行库与上传文件）
      */
-    protected function downloadAndApplyPatch(string $url, ?string $expectedSha256 = null, bool $preserveFrontend = false): void
-    {
+    protected function downloadAndApplyPatch(
+        string $url,
+        ?string $expectedSha256 = null,
+        bool $preserveFrontend = false,
+        ?string $backupDir = null
+    ): void {
         $normalizedSha256 = self::normalizePatchSha256($expectedSha256);
         $tmpFile = $this->runtimeBackupDir . 'patch_' . time() . '.zip';
         $siteDomain = $this->resolveSiteDomain();
@@ -1399,7 +1781,7 @@ class SystemUpdater
         }
 
         try {
-            $this->verifyAndApplyPatchArchive($tmpFile, $normalizedSha256, $preserveFrontend);
+            $this->verifyAndApplyPatchArchive($tmpFile, $normalizedSha256, $preserveFrontend, $backupDir);
         } finally {
             @unlink($tmpFile);
         }
@@ -1408,7 +1790,7 @@ class SystemUpdater
     /**
      * 校验并安全解压升级补丁压缩包到当前后端根目录
      */
-    public function applyPatchArchive(string $zipPath, bool $preserveFrontend = false): int
+    public function applyPatchArchive(string $zipPath, bool $preserveFrontend = false, ?string $backupDir = null): int
     {
         if (!class_exists(ZipArchive::class)) {
             throw new ApiException('当前 PHP 环境缺少 zip 扩展');
@@ -1418,78 +1800,117 @@ class SystemUpdater
             throw new ApiException('升级补丁压缩包损坏或格式无效');
         }
 
-        $entries = [];
-        $hasTopCore = false;
-        $hasServerCore = false;
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            $rawOrig = (string) $zip->getNameIndex($i);
-            if (str_contains($rawOrig, "\0")) {
-                $zip->close();
-                throw new ApiException('升级包包含非法空字节路径条目');
-            }
-            $rawName = str_replace('\\', '/', $rawOrig);
-            if ($rawName === '' || str_ends_with($rawName, '/')) {
-                continue;
-            }
-            if (str_starts_with($rawName, '/') || preg_match('/^[A-Za-z]:/', $rawName) || in_array('..', explode('/', $rawName), true)) {
-                $zip->close();
-                throw new ApiException("升级包包含非法路径条目：{$rawName}");
-            }
-            $opsys = 0;
-            $attr = 0;
-            if ($zip->getExternalAttributesIndex($i, $opsys, $attr)) {
-                $mode = (($attr >> 16) & 0xF000);
-                if ($opsys === ZipArchive::OPSYS_UNIX && $mode === 0xA000) {
-                    $zip->close();
-                    throw new ApiException("升级包包含非法符号链接条目：{$rawName}");
+        $zipClosed = false;
+        $createdFiles = [];
+
+        try {
+            $entries = [];
+            $hasTopCore = false;
+            $hasServerCore = false;
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $rawOrig = (string) $zip->getNameIndex($i);
+                if (str_contains($rawOrig, "\0")) {
+                    throw new ApiException('升级包包含非法空字节路径条目');
                 }
+                $rawName = str_replace('\\', '/', $rawOrig);
+                if ($rawName === '' || str_ends_with($rawName, '/')) {
+                    continue;
+                }
+                if (str_starts_with($rawName, '/') || preg_match('/^[A-Za-z]:/', $rawName) || in_array('..', explode('/', $rawName), true)) {
+                    throw new ApiException("升级包包含非法路径条目：{$rawName}");
+                }
+                $opsys = 0;
+                $attr = 0;
+                if ($zip->getExternalAttributesIndex($i, $opsys, $attr)) {
+                    $mode = (($attr >> 16) & 0xF000);
+                    if ($opsys === ZipArchive::OPSYS_UNIX && $mode === 0xA000) {
+                        throw new ApiException("升级包包含非法符号链接条目：{$rawName}");
+                    }
+                }
+                if (str_starts_with($rawName, 'core/')) {
+                    $hasTopCore = true;
+                } elseif (str_starts_with($rawName, 'server/core/')) {
+                    $hasServerCore = true;
+                }
+                $entries[] = $i;
             }
-            if (str_starts_with($rawName, 'core/')) {
-                $hasTopCore = true;
-            } elseif (str_starts_with($rawName, 'server/core/')) {
-                $hasServerCore = true;
-            }
-            $entries[] = $i;
-        }
 
-        $stripServerPrefix = !$hasTopCore && $hasServerCore;
-        $rootPath = rtrim(str_replace('\\', '/', $this->app->getRootPath()), '/') . '/';
-        $applied = 0;
+            $stripServerPrefix = !$hasTopCore && $hasServerCore;
+            $rootPath = rtrim(str_replace('\\', '/', $this->app->getRootPath()), '/') . '/';
+            $applied = 0;
 
-        foreach ($entries as $idx) {
-            $rawName = str_replace('\\', '/', (string) $zip->getNameIndex($idx));
-            $rel = $stripServerPrefix && str_starts_with($rawName, 'server/')
-                ? substr($rawName, strlen('server/'))
-                : $rawName;
-            $rel = ltrim($rel, '/');
-            if ($rel === '' || self::isProtectedPatchPath($rel)) {
-                continue;
+            foreach ($entries as $idx) {
+                $rawName = str_replace('\\', '/', (string) $zip->getNameIndex($idx));
+                $rel = $stripServerPrefix && str_starts_with($rawName, 'server/')
+                    ? substr($rawName, strlen('server/'))
+                    : $rawName;
+                $rel = ltrim($rel, '/');
+                if ($rel === '' || self::isProtectedPatchPath($rel) || !self::isAllowedFrameworkPatchPath($rel)) {
+                    continue;
+                }
+                if ($preserveFrontend && ($rel === 'public/admin' || str_starts_with($rel, 'public/admin/'))) {
+                    continue;
+                }
+                $dest = $rootPath . $rel;
+                // 站点级配置/伪静态/图标/前端配置：若目标站点已存在则跳过覆写，仅在缺失时初始化写入
+                if (in_array($rel, self::SITE_PRESERVE_IF_EXISTS_PATHS, true) && (is_file($dest) || is_link($dest))) {
+                    continue;
+                }
+                $content = $zip->getFromIndex($idx);
+                if ($content === false) {
+                    continue;
+                }
+                $existedBefore = file_exists($dest) || is_link($dest);
+                $destDir = dirname($dest);
+                if (!is_dir($destDir)) {
+                    @mkdir($destDir, 0755, true);
+                }
+                if (@file_put_contents($dest, $content) === false) {
+                    throw new ApiException("写入升级文件失败：{$rel}");
+                }
+                @chmod($dest, 0644);
+                if (str_ends_with(strtolower($dest), '.php') && function_exists('opcache_invalidate')) {
+                    @opcache_invalidate($dest, true);
+                }
+                if (!$existedBefore) {
+                    $createdFiles[] = $rel;
+                }
+                $applied++;
             }
-            if ($preserveFrontend && ($rel === 'public/admin' || str_starts_with($rel, 'public/admin/'))) {
-                continue;
-            }
-            $content = $zip->getFromIndex($idx);
-            if ($content === false) {
-                continue;
-            }
-            $dest = $rootPath . $rel;
-            $destDir = dirname($dest);
-            if (!is_dir($destDir)) {
-                @mkdir($destDir, 0755, true);
-            }
-            if (@file_put_contents($dest, $content) === false) {
+
+            $zip->close();
+            $zipClosed = true;
+            return $applied;
+        } finally {
+            if (!$zipClosed) {
                 $zip->close();
-                throw new ApiException("写入升级文件失败：{$rel}");
             }
-            @chmod($dest, 0644);
-            if (str_ends_with(strtolower($dest), '.php') && function_exists('opcache_invalidate')) {
-                @opcache_invalidate($dest, true);
+            if ($backupDir !== null && trim($backupDir) !== '' && is_dir($backupDir)) {
+                $manifestPath = rtrim($backupDir, '/\\') . DIRECTORY_SEPARATOR . 'patch_manifest.json';
+                $manifestPayload = [
+                    'created_files' => array_values(array_unique($createdFiles)),
+                    'applied_at'    => date('Y-m-d H:i:s'),
+                ];
+                @file_put_contents($manifestPath, json_encode($manifestPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             }
-            $applied++;
         }
+    }
 
-        $zip->close();
-        return $applied;
+    /**
+     * 客户端允许 OTA 补丁写入的白名单校验（严禁越权覆写 app/api、app/index/route、app/index/view、非白名单 config/ 等业务目录）
+     */
+    public static function isAllowedFrameworkPatchPath(string $relPath): bool
+    {
+        $norm = ltrim(str_replace('\\', '/', $relPath), '/');
+        if ($norm === '' || str_contains($norm, "\0") || str_contains($norm, '..') || self::isProtectedPatchPath($norm)) {
+            return false;
+        }
+        foreach (self::ALLOWED_FRAMEWORK_PATCH_PREFIXES as $prefix) {
+            if (str_starts_with($norm, $prefix)) {
+                return true;
+            }
+        }
+        return in_array($norm, self::ALLOWED_FRAMEWORK_PATCH_FILES, true);
     }
 
     /**
@@ -1512,8 +1933,12 @@ class SystemUpdater
     /**
      * 安全校验并将插件 ZIP 解压并覆写至目标插件目录（兼容单层目录包裹、符号链接阻断与不同属主文件替换）
      */
-    public function extractPluginPackageSafely(string $zipFile, string $targetDir, bool $requireManifest = false): void
-    {
+    public function extractPluginPackageSafely(
+        string $zipFile,
+        string $targetDir,
+        bool $requireManifest = false,
+        bool $cleanTargetBeforeCopy = false
+    ): void {
         if (!class_exists(ZipArchive::class)) {
             throw new ApiException('当前 PHP 环境缺少 zip 扩展');
         }
@@ -1608,7 +2033,11 @@ class SystemUpdater
                 throw new ApiException('插件更新包格式不正确：缺少 plugin.json');
             }
 
-            $this->copyPluginDirectorySafely($sourceDir, rtrim($targetDir, '/\\'));
+            $cleanTarget = rtrim($targetDir, '/\\');
+            if ($cleanTargetBeforeCopy && is_dir($cleanTarget)) {
+                $this->cleanDirectoryExceptGitkeep($cleanTarget);
+            }
+            $this->copyPluginDirectorySafely($sourceDir, $cleanTarget);
         } finally {
             $this->removeDirectoryRecursively($stagingDir);
         }
@@ -1666,6 +2095,17 @@ class SystemUpdater
             }
         }
         @rmdir($dir);
+    }
+
+    /**
+     * 安全记录 updater 日志（兼容未完整初始化日志驱动的独立 App 容器）
+     */
+    protected function logMessage(string $level, string $message): void
+    {
+        try {
+            $this->app->log->{$level}($message);
+        } catch (Throwable) {
+        }
     }
 
     /**

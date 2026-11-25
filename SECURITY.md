@@ -10,8 +10,8 @@
 
 | Version | Supported |
 | --- | --- |
-| 1.5.x (current `main`) | :white_check_mark: |
-| < 1.5.0 | :x: |
+| 1.6.x (current `main`) | :white_check_mark: |
+| < 1.6.0 | :x: |
 
 ### Reporting a Vulnerability
 
@@ -39,8 +39,8 @@ We will acknowledge receipt within 48 hours and work with you to verify, remedia
 
 | 版本 | 安全支持状态 |
 | --- | --- |
-| 1.5.x（当前主分支） | :white_check_mark: 支持 |
-| < 1.5.0 | :x: 已停止支持 |
+| 1.6.x（当前主分支） | :white_check_mark: 支持 |
+| < 1.6.0 | :x: 已停止支持 |
 
 ### 漏洞反馈渠道
 

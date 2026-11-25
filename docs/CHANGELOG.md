@@ -1,3 +1,22 @@
+## [1.6.7] - 2026-11-25
+
+### 客户端 OTA 纵深防御、插件升级保护与 AI 开发规范全面升级
+- **客户端 OTA 纵深防御（[SystemUpdater.php](../server/core/plugin/SystemUpdater.php)）**：
+  - 站点级配置/伪静态/图标（`config/database.php`、`public/.htaccess`、`public/nginx.htaccess`、`public/favicon.ico` 等）与 `public/admin/hwadmin.config.js` 升级防覆写保护，新增允许路径白名单兜底校验；
+  - 升级前备份失败硬阻断机制，生成 `patch_manifest.json` 记录本次覆写/新增文件清单实现精准回滚；
+  - `migrate:run` 异常自动触发回滚，并在升级前自动创建 SQLite 数据库快照；
+  - 老站全目录二开探测，覆盖更多自定义业务目录与历史改造特征。
+- **插件升级保护（[AssetPublisher.php](../server/core/plugin/AssetPublisher.php)、[SystemUpdater.php](../server/core/plugin/SystemUpdater.php)）**：
+  - 插件升级时自动保留 `app/index/view/{name}/index.html` 与 `public/plugins/{name}/` 自定义资源；
+  - 插件升级失败或回滚时完整恢复原状态与原有静态资源。
+- **前端升级体验与缓存自愈（[main.ts](../admin-ui/src/main.ts)、[permissions.ts](../admin-ui/src/router/permissions.ts)、[chunkRecovery.ts](../admin-ui/src/utils/chunkRecovery.ts)、[nginx.htaccess](../server/public/nginx.htaccess)）**：
+  - 彻底注销旧版 PWA Service Worker，避免静态资源缓存卡死；
+  - 新增 Chunk 加载失效一次性防死循环自愈刷新机制；
+  - `server/public/nginx.htaccess` 为 `sw.js` 与 `workbox-*.js` 禁用浏览器缓存。
+- **AI 开发规范与文档全面升级（14 份规范与入口文档）**：
+  - 同步更新 `AGENTS.md`、`CLAUDE.md`、`START_HERE.md`、`SECURITY.md`、`admin-ui/AGENTS.md`、`admin-ui/README.md`、`server/AGENTS.md` 及 `docs/` 核心开发与运维规范文档，补全 OTA 红绿灯目录边界、前端内核禁改区、微视图规范与生产前备份红线。
+- **版本号判定**：本次为客户端 OTA 纵深防御、插件升级保护、前端缓存自愈与全套 AI 开发规范升级，无破坏性数据库表结构变化，按 patch 从 `1.6.6` 升级至 `1.6.7`。
+
 ## [1.6.6] - 2026-11-25
 
 ### 适配市场「默认纯内核 + 显式 scope=full」策略与 OTA 安全边界强化

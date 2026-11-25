@@ -62,17 +62,21 @@ export const $unsub: any = (...args: any[]) => {
  */
 export async function $clearPWACache() {
   // 注销所有 Service Worker
-  if ('serviceWorker' in navigator) {
-    const registrations = await navigator.serviceWorker.getRegistrations()
-    for (const registration of registrations) {
-      await registration.unregister()
+  try {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker?.getRegistrations) {
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(registrations.map((registration) => registration.unregister()))
     }
+  } catch {
+    // 忽略浏览器 Service Worker 注销异常
   }
   // 清空所有 Cache Storage
-  if ('caches' in globalThis) {
-    const cacheNames = await caches.keys()
-    for (const cacheName of cacheNames) {
-      await caches.delete(cacheName)
+  try {
+    if (typeof caches !== 'undefined' && caches?.keys) {
+      const cacheNames = await caches.keys()
+      await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)))
     }
+  } catch {
+    // 忽略浏览器 CacheStorage 清理异常
   }
 }

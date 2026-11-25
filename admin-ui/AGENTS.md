@@ -13,7 +13,17 @@
 
 ---
 
-## 二、目录结构规范
+## 二、前端安全边界对照表（OTA 升级红绿灯）
+
+| 级别 | 路径 / 模式 | 说明与约束 |
+| :--- | :--- | :--- |
+| 🟢 **推荐（安全扩展）** | `server/public/plugins/{name}/admin.html`<br>`src/views/{biz}/` + `src/api/{biz}.ts` | **最推荐**：独立插件免编译微视图 `admin.html`，与框架 OTA 完全隔离；若在 `admin-ui` 内二开业务，请将页面与接口放在 `src/views/{biz}/` 与 `src/api/{biz}.ts`。 |
+| 🔴 **禁改（内核升级区）** | `src/layout/`、`src/router/`、`src/store/`、`src/directives/`、`src/components/FrameworkUpdateDialog.vue`、`src/views/system/plugin/` | 属于框架管理端核心底座，严禁直接修改，避免破坏动态路由、鉴权、在线更新与插件市场交互。 |
+| 🟡 **构建与指纹保护** | `server/public/admin/hwadmin-official-ui.json` | 修改前端后**必须**执行 `pnpm check && pnpm build:sync`，自动写入二开保护指纹（`official: false`）；**严禁删除或手动伪造 `server/public/admin/hwadmin-official-ui.json`**。 |
+
+---
+
+## 三、目录结构规范
 
 ```
 admin-ui/
@@ -31,7 +41,7 @@ admin-ui/
 
 ---
 
-## 三、前端开发核心铁律
+## 四、前端开发核心铁律
 
 1. **动态路由自动映射**：
    - 后端返回的 `component` 字段（如 `@/views/system/dict/index.vue`）由 `src/utils/routes.ts` 通过 `import.meta.glob('/src/views/**/*.vue')` 自动映射到 `src/views/` 对应文件。

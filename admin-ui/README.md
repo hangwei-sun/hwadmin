@@ -34,10 +34,10 @@ pnpm dev
 ```
 开发服务器默认运行在 `http://localhost:15173`，代理 `/adminapi` 至后端服务（默认 `http://127.0.0.1:8000`）。如需自定义代理地址，可配置 `admin-ui/.env.development.local`。
 
-### 3. 生产打包并发布至后端
+### 3. 生产打包并同步至后端
 ```bash
-pnpm build
+pnpm check && pnpm build:sync
 ```
-构建产物生成在 `admin-ui/dist/`，需将完整内容发布到 `server/public/admin/`。发布时使用干净目录，避免遗留旧版本脚本。生产工程直接访问真实后端，不再包含演示 mock、模板注册/找回密码入口和官网构建。
+`pnpm check` 会执行 `vue-tsc` 类型检查、oxlint 校验、单元测试与构建验证；`pnpm build:sync` 会将构建产物原子同步到 `server/public/admin/` 并清理旧文件，同时自动写入二开保护指纹文件 `server/public/admin/hwadmin-official-ui.json`（标记 `official: false`），确保后续框架 OTA 在线更新自动跳过 `public/admin/` 而不覆盖本地二开页面（严禁删除或手动伪造该指纹文件）。
 
 运行时部署配置为 `public/hwadmin.config.js`，通过 `window.HWADMIN_CONFIG` 提供同域 API 地址、标题和本地存储命名空间；不能在该文件中放置密钥。更新部署时需同时发布新入口和该配置文件。

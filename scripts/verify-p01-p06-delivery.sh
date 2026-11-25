@@ -21,7 +21,7 @@ for cmd in python3 php bash; do
     fi
 done
 
-VERSION=$(python3 -c "import re, pathlib; m = re.search(r\"'version'\s*=>\s*'([^']+)'\", pathlib.Path('$ROOT/server/config/hwadmin.php').read_text(encoding='utf-8')); print(m.group(1) if m else '1.6.6')")
+VERSION=$(python3 -c "import re, pathlib; m = re.search(r\"'version'\s*=>\s*'([^']+)'\", pathlib.Path('$ROOT/server/config/hwadmin.php').read_text(encoding='utf-8')); print(m.group(1) if m else '1.6.7')")
 
 DEV_ZIP="${DEV_ZIP_OVERRIDE:-}"
 if [ -z "$DEV_ZIP" ]; then
