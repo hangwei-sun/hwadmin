@@ -11,7 +11,7 @@ SERVER_DIR="$ROOT/server"
 RELEASE_DIR="$ROOT/release"
 
 # 1. 解析目标版本号 (优先读取传入参数，其次读取 server/version.json)
-DEFAULT_VER="1.6.7"
+DEFAULT_VER="1.6.8"
 if [ -f "$SERVER_DIR/version.json" ]; then
     DETECTED_VER=$(grep -o '"version": *"[^"]*"' "$SERVER_DIR/version.json" | cut -d'"' -f4 || true)
     if [ -n "$DETECTED_VER" ]; then

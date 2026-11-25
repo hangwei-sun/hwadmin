@@ -25,7 +25,7 @@ use RecursiveIteratorIterator;
  */
 class SystemUpdater
 {
-    public const CURRENT_VERSION = '1.6.7';
+    public const CURRENT_VERSION = '1.6.8';
     public const CHANNEL_STABLE = 'stable';
     public const CHANNEL_BETA = 'beta';
     public const VALID_CHANNELS = [self::CHANNEL_STABLE, self::CHANNEL_BETA];

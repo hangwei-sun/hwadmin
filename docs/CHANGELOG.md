@@ -1,3 +1,14 @@
+## [1.6.8] - 2026-11-25
+
+### CI 矩阵适配、PostgreSQL 迁移兼容与运行时冒烟修复
+- **PostgreSQL 迁移与运行时兼容（[20261030000001_add_portal_and_security_configs.php](../server/database/migrations/20261030000001_add_portal_and_security_configs.php)、[hw-runtime.py](../scripts/hw-runtime.py)）**：
+  - 修复配置迁移脚本中 MySQL 反引号在 PostgreSQL 下不兼容的问题，统一采用适配器安全写法；
+  - `hw-runtime.py` 新增 Ubuntu 26.04 LTS 矩阵识别与包安装适配。
+- **CI 流水线、冒烟脚本与精简文档门禁（[.github/workflows/ci.yml](../.github/workflows/ci.yml)、[smoke.sh](../server/tests/smoke.sh)、[pnpm-lock.yaml](../admin-ui/pnpm-lock.yaml)）**：
+  - 同步 `admin-ui/pnpm-lock.yaml`，修复 `hw:install` 后 `.env` `APP_DEBUG`、SQLite `.env` 初始化与 MySQL/PG 冒烟登录参数传递，并在 `smoke.sh` 中补齐前端入口桩文件与 `--incremental` CRUD 演练；
+  - 精简根目录 `START_HERE.md`（< 60 行）与 `AGENTS.md`（< 80 行），保持核心指引紧凑可读。
+- **版本号判定**：本次为 CI/迁移/运行时兼容性修复与文档精简，无破坏性接口或表结构变更，按 patch 从 `1.6.7` 升级至 `1.6.8`。
+
 ## [1.6.7] - 2026-11-25
 
 ### 客户端 OTA 纵深防御、插件升级保护与 AI 开发规范全面升级

@@ -16,7 +16,7 @@ body:
     attributes:
       label: HwAdmin 版本号
       description: 可在 README.md 或 `server/config/hwadmin.php` 中查看
-      placeholder: 例如：v1.6.7
+      placeholder: 例如：v1.6.8
     validations:
       required: true
 
