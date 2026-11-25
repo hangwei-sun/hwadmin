@@ -99,8 +99,9 @@ jobs:
             echo "Running SQLite smoke test suite..."
             chmod +x tests/smoke.sh
             bash tests/smoke.sh
-            php think hw:inspect --json > /dev/null
-            php think hw:crud --table=hw_admin --dry-run --incremental
+            DB_DRIVER=sqlite DB_TYPE=sqlite DB_NAME=runtime/hwadmin.sqlite DB_PREFIX=hw_ php think migrate:run
+            DB_DRIVER=sqlite DB_TYPE=sqlite DB_NAME=runtime/hwadmin.sqlite DB_PREFIX=hw_ php think hw:inspect --json > /dev/null
+            DB_DRIVER=sqlite DB_TYPE=sqlite DB_NAME=runtime/hwadmin.sqlite DB_PREFIX=hw_ php think hw:crud --table=hw_admin --dry-run --incremental
           elif [ "${{ matrix.db }}" = "mysql" ]; then
             echo "Running MySQL 8.0 validation..."
             printf "%s\n" \
@@ -121,7 +122,7 @@ jobs:
             php think hw:install --username=admin --password=Admin123456! --db-driver=mysql --db-host=127.0.0.1 --db-port=3306 --db-name=hwadmin_test --db-user=root --db-pass=root --force
             php think hw:inspect --json > /dev/null
             php think hw:crud --table=hw_admin --dry-run --incremental
-            php -S 127.0.0.1:18080 -t public public/router.php >/dev/null 2>&1 &
+            PHP_APP_DEBUG=true php -S 127.0.0.1:18080 -t public public/router.php >/dev/null 2>&1 &
             CI_HTTP_PID=$!
             trap 'kill "$CI_HTTP_PID" 2>/dev/null || true' EXIT
             for i in $(seq 1 25); do
@@ -131,16 +132,16 @@ jobs:
               sleep 0.2
             done
             PING_RES=$(curl -fsS http://127.0.0.1:18080/api/index/ping)
-            echo "$PING_RES" | grep -q '"code":1'
+            echo "$PING_RES" | grep -q '"code":1' || { echo "PING_RES=$PING_RES"; exit 1; }
             UNAUTH_RES=$(curl -sS http://127.0.0.1:18080/adminapi/index/info)
-            echo "$UNAUTH_RES" | grep -q '"code":401'
+            echo "$UNAUTH_RES" | grep -q '"code":401' || { echo "UNAUTH_RES=$UNAUTH_RES"; exit 1; }
             LOGIN_RES=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{"username":"admin","password":"Admin123456!","captcha_key":"__SMOKE_KEY__","captcha_code":"__SMOKE_CODE__"}' http://127.0.0.1:18080/adminapi/index/login)
-            echo "$LOGIN_RES" | grep -q '"token"'
+            echo "$LOGIN_RES" | grep -q '"token"' || { echo "LOGIN_RES=$LOGIN_RES"; exit 1; }
             TOKEN=$(echo "$LOGIN_RES" | sed -E 's/.*"token":"([a-f0-9]+)".*/\1/')
             INFO_RES=$(curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18080/adminapi/index/info)
-            echo "$INFO_RES" | grep -q '"permissions":\["\*"\]'
+            echo "$INFO_RES" | grep -q '"permissions":\["\*"\]' || { echo "INFO_RES=$INFO_RES"; exit 1; }
             MENUS_RES=$(curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18080/adminapi/index/menus)
-            echo "$MENUS_RES" | grep -q '"component":"Layout"'
+            echo "$MENUS_RES" | grep -q '"component":"Layout"' || { echo "MENUS_RES=$MENUS_RES"; exit 1; }
             kill "$CI_HTTP_PID" 2>/dev/null || true
             trap - EXIT
             echo "MySQL validation passed!"
@@ -164,7 +165,7 @@ jobs:
             php think hw:install --username=admin --password=Admin123456! --db-driver=pgsql --db-host=127.0.0.1 --db-port=5432 --db-name=hwadmin_test --db-user=postgres --db-pass=root --force
             php think hw:inspect --json > /dev/null
             php think hw:crud --table=hw_admin --dry-run --incremental
-            php -S 127.0.0.1:18080 -t public public/router.php >/dev/null 2>&1 &
+            PHP_APP_DEBUG=true php -S 127.0.0.1:18080 -t public public/router.php >/dev/null 2>&1 &
             CI_HTTP_PID=$!
             trap 'kill "$CI_HTTP_PID" 2>/dev/null || true' EXIT
             for i in $(seq 1 25); do
@@ -174,16 +175,16 @@ jobs:
               sleep 0.2
             done
             PING_RES=$(curl -fsS http://127.0.0.1:18080/api/index/ping)
-            echo "$PING_RES" | grep -q '"code":1'
+            echo "$PING_RES" | grep -q '"code":1' || { echo "PING_RES=$PING_RES"; exit 1; }
             UNAUTH_RES=$(curl -sS http://127.0.0.1:18080/adminapi/index/info)
-            echo "$UNAUTH_RES" | grep -q '"code":401'
+            echo "$UNAUTH_RES" | grep -q '"code":401' || { echo "UNAUTH_RES=$UNAUTH_RES"; exit 1; }
             LOGIN_RES=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{"username":"admin","password":"Admin123456!","captcha_key":"__SMOKE_KEY__","captcha_code":"__SMOKE_CODE__"}' http://127.0.0.1:18080/adminapi/index/login)
-            echo "$LOGIN_RES" | grep -q '"token"'
+            echo "$LOGIN_RES" | grep -q '"token"' || { echo "LOGIN_RES=$LOGIN_RES"; exit 1; }
             TOKEN=$(echo "$LOGIN_RES" | sed -E 's/.*"token":"([a-f0-9]+)".*/\1/')
             INFO_RES=$(curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18080/adminapi/index/info)
-            echo "$INFO_RES" | grep -q '"permissions":\["\*"\]'
+            echo "$INFO_RES" | grep -q '"permissions":\["\*"\]' || { echo "INFO_RES=$INFO_RES"; exit 1; }
             MENUS_RES=$(curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18080/adminapi/index/menus)
-            echo "$MENUS_RES" | grep -q '"component":"Layout"'
+            echo "$MENUS_RES" | grep -q '"component":"Layout"' || { echo "MENUS_RES=$MENUS_RES"; exit 1; }
             kill "$CI_HTTP_PID" 2>/dev/null || true
             trap - EXIT
             echo "PostgreSQL validation passed!"
