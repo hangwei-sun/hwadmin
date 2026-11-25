@@ -1,3 +1,16 @@
+## [1.6.6] - 2026-11-25
+
+### 适配市场「默认纯内核 + 显式 scope=full」策略与 OTA 安全边界强化
+- **后端全量包地址透传与备份范围标识**：
+  - [SystemUpdater.php](../server/core/plugin/SystemUpdater.php)：`checkUpdates()` 透传市场 `full_download_url` 与 `full_patch_sha256`（若市场未返回 `full_download_url`，自动基于 `download_url` 拼上 `scope=full` 兜底），并完整保留 `core_download_url`、`core_patch_sha256`、`download_url`、`patch_sha256`；`getBackups()` 为每条框架备份快照补充 `has_frontend_backup` 字段（检测 `public_admin.zip` 是否存在），`rollbackUpdate()` 对不含前端产物的历史快照补充精确提示。
+- **前端升级包选择联动与快照标签展示**：
+  - [FrameworkUpdateDialog.vue](../admin-ui/src/components/FrameworkUpdateDialog.vue)、[hwadmin.ts](../admin-ui/src/api/hwadmin.ts)、[index/index.vue](../admin-ui/src/views/index/index.vue) 与 [plugin/index.vue](../admin-ui/src/views/system/plugin/index.vue)：选择「同步更新前后端」时优先请求 `full_download_url` + `full_patch_sha256`（传 `preserve_frontend: false`）；选择「仅更新后端内核」时优先请求 `core_download_url || download_url` + `core_patch_sha256 || patch_sha256`（传 `preserve_frontend: true`）；「备份与回滚」列表新增 `含前端+内核` / `仅内核` 状态标签并在回滚确认弹窗提示备份范围。
+- **AI 业务与插件开发安全边界规范**：
+  - [AGENTS.md](../AGENTS.md)、[START_HERE.md](../START_HERE.md)、[CLAUDE.md](../CLAUDE.md) 与 [server/AGENTS.md](../server/AGENTS.md) 新增「AI 业务与插件开发目录安全边界（OTA 升级红绿灯）」，明确永久安全区、框架内核升级区与前端二开保护约定。
+- **自动化验证**：
+  - [OtaChannelAndDependencyGuardTest.php](../server/tests/Unit/OtaChannelAndDependencyGuardTest.php)：新增 `checkUpdates()` 透传与 `scope=full` 兜底、以及 `getBackups()` 新旧快照 `has_frontend_backup` 正反例 PHPUnit 测试。
+- **版本号判定**：本次为适配官方市场默认纯内核包分发与完整包按需拉取策略，无数据库表结构变化，按 patch 从 `1.6.5` 升级至 `1.6.6`。
+
 ## [1.6.5] - 2026-11-25
 
 ### 二开前端保护与 OTA 全量备份回滚升级

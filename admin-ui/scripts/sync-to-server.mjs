@@ -45,7 +45,7 @@ for (const iconName of ['favicon.ico', 'favicon.svg']) {
 }
 
 // 生成前端构建指纹清单，用于 OTA 升级区分“官方纯净前端”与“二开自定义编译前端”
-let frameworkVersion = '1.6.5'
+let frameworkVersion = '1.6.6'
 try {
   const pkg = JSON.parse(readFileSync(resolve(adminUiDir, 'package.json'), 'utf8'))
   if (pkg?.version) {

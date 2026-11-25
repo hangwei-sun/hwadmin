@@ -633,6 +633,17 @@ export const delSmsLog = (ids: (number | string)[] | string | number) => {
 }
 
 // ==================== 框架与插件在线更新 ====================
+export interface SystemBackupRecord {
+  id: string
+  type: 'framework' | 'plugin' | string
+  name: string
+  version: string
+  created_at: string
+  size: string
+  path?: string
+  has_frontend_backup?: boolean
+}
+
 export const checkSystemUpdates = () => {
   return request({
     url: `${API_BASE}/system.plugin/checkUpdates`,

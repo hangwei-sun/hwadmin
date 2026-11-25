@@ -9,7 +9,7 @@
 
 HwAdmin 明确区分 **框架维护** 与 **业务应用开发** 两个层级：
 
-1. **框架版本 (`version`)**：定义框架内核基座版本（当前为 `1.6.5`），维护 `core/` 底座时由核心发布流程变更。
+1. **框架版本 (`version`)**：定义框架内核基座版本（当前为 `1.6.6`），维护 `core/` 底座时由核心发布流程变更。
 2. **业务应用版本 (`app_version`)**：由业务开发者在 `server/config/hwadmin.php`（或环境变量 `APP_VERSION`）及根目录 `hw.project.json` 中独立维护。
 3. **免繁重版本同步**：业务开发日常增加模块、接口、迁移与业务逻辑，**只需递增 `app_version`**，**严禁**修改 `config/hwadmin.php` 中的框架基座版本号或侵入 `core/` 目录。
 
@@ -31,6 +31,22 @@ server/
 ├── database/migrations/    # Phinx 迁移脚本（遵循 MySQL/PG/SQLite 双栈兼容）
 └── tests/                  # 自动化测试套件 (Unit / Feature)
 ```
+
+## AI 业务与插件开发目录安全边界（OTA 升级红绿灯）
+
+1. 🟢 **永久安全区（框架 OTA 升级永不覆写，业务/插件代码请放这里）**：
+   - `server/plugins/{插件名}/` 与 `server/public/plugins/{插件名}/`（**最推荐**：独立插件 + 免编译微视图 `admin.html`，与框架完全解耦，框架任意升级不受影响）；
+   - `server/app/adminapi/controller/{自定义业务目录}/`（避开 `system/`、`auth/`、`Index.php`、`Dashboard.php`）；
+   - `server/app/common/model/{自定义业务模型}/`（避开 `system/` 与框架内置基础模型）；
+   - `server/app/common/service/{自定义业务服务}/`（避开 `ConfigService.php`、`DictService.php`、`DeploymentService.php`）；
+   - `server/app/api/`（前台/小程序/H5 业务接口）；
+   - `server/database/migrations/` 中**新建**的时间戳迁移文件（严禁修改已有框架迁移文件）；
+   - `server/.env`、`server/config/database.php`、`server/public/uploads/`、`server/runtime/`。
+2. 🔴 **框架内核升级区（OTA 在线更新会同步覆写，严禁直接修改）**：
+   - `server/core/`、`server/app/adminapi/controller/system/`、`server/app/adminapi/controller/auth/`、`server/app/adminapi/controller/Index.php`、`server/app/adminapi/controller/Dashboard.php`、`server/app/common/service/{ConfigService,DictService,DeploymentService}.php`、`server/app/common/model/system/`、`server/config/hwadmin.php`、`server/public/index.php`。
+3. 🟡 **前端二开特别约定（`admin-ui/` 与 `server/public/admin/`）**：
+   - 本地二次开发修改 `admin-ui/` 后运行 `pnpm build:sync` 会自动写入 `server/public/admin/hwadmin-official-ui.json`（`official: false`），框架在线更新会自动跳过 `public/admin/` 仅升级后端内核，绝不覆盖二开页面；
+   - 若希望同时享受官方管理后台 UI 自动在线升级，建议优先采用「独立插件 + `public/plugins/{插件名}/admin.html` 免编译微视图」模式开发业务页面。
 
 ---
 

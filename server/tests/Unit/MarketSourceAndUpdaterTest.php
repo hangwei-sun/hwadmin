@@ -11,7 +11,7 @@ final class MarketSourceAndUpdaterTest extends TestCase
 {
     public function testDefaultMarketSourcePointsToOfficialHttpsDomain(): void
     {
-        $this->assertSame('1.6.5', (string) config('hwadmin.version'));
+        $this->assertSame('1.6.6', (string) config('hwadmin.version'));
         $this->assertSame('https://hw.baotoutv.cn', (string) config('hwadmin.market.default_url'));
 
         $ctrl = (new \ReflectionClass(\app\adminapi\controller\system\Plugin::class))->newInstanceWithoutConstructor();

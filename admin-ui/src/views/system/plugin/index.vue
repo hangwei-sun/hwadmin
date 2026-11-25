@@ -1103,7 +1103,7 @@
     </el-dialog>
 
     <!-- 应用历史备份与快照回滚弹窗 -->
-    <el-dialog v-model="backupDialogVisible" title="备份与回滚" width="760px" destroy-on-close>
+    <el-dialog v-model="backupDialogVisible" title="备份与回滚" width="min(880px, 94vw)" destroy-on-close>
       <div v-if="!backupsList.length" style="padding: 24px 0; text-align: center">
         <el-empty description="还没有备份记录" />
       </div>
@@ -1119,6 +1119,19 @@
             <el-tag size="small" :type="row.type === 'framework' ? 'primary' : 'info'" effect="plain">
               {{ row.type === 'framework' ? '框架' : '应用' }}
             </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="备份内容" width="120">
+          <template #default="{ row }">
+            <el-tag
+              v-if="row.type === 'framework'"
+              size="small"
+              :type="row.has_frontend_backup ? 'success' : 'warning'"
+              effect="light"
+            >
+              {{ row.has_frontend_backup ? '含前端+内核' : '仅内核' }}
+            </el-tag>
+            <el-tag v-else size="small" type="info" effect="plain">插件源码</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="name" label="名称" width="110" />
@@ -1247,6 +1260,7 @@ import {
   updatePluginPackage,
   rollbackSystemUpdate,
   getSystemBackups,
+  type SystemBackupRecord,
 } from '/@/api/hwadmin'
 import { useRoutesStore } from '/@/store/modules/routes'
 
@@ -1285,8 +1299,8 @@ const selectedUpdateChannel = ref<'stable' | 'beta'>('stable')
 const frameworkUpdateDialogVisible = ref(false)
 const frameworkInfo = reactive<FrameworkReleaseInfo>({
   name: 'hwadmin',
-  current_version: '1.6.5',
-  latest_version: '1.6.5',
+  current_version: '1.6.6',
+  latest_version: '1.6.6',
   has_update: false,
   update_channel: 'stable',
   release_channel: 'stable',
@@ -1296,17 +1310,19 @@ const frameworkInfo = reactive<FrameworkReleaseInfo>({
   patch_sha256: '',
   core_download_url: '',
   core_patch_sha256: '',
+  full_download_url: '',
+  full_patch_sha256: '',
   frontend_status: undefined,
   min_php: '8.1',
 })
 const displayCurrentVersion = computed(() => {
-  return frameworkInfo.current_version || '1.6.5'
+  return frameworkInfo.current_version || '1.6.6'
 })
 
 // 备份与指南抽屉/弹窗
 const backupDialogVisible = ref(false)
 const guideDrawerVisible = ref(false)
-const backupsList = ref<any[]>([])
+const backupsList = ref<SystemBackupRecord[]>([])
 const rollingBackId = ref('')
 const pluginUpdatingMap = reactive<Record<string, boolean>>({})
 const pluginsUpdateDict = ref<Record<string, any>>({})
@@ -1747,10 +1763,16 @@ const handleOnlineUpdatePlugin = async (item: any) => {
   }
 }
 
-const handleRollback = async (backup: any) => {
+const handleRollback = async (backup: SystemBackupRecord | Record<string, any>) => {
+  const confirmMsg =
+    backup.type === 'framework'
+      ? backup.has_frontend_backup
+        ? `确定回滚到 v${backup.version}（${backup.id}）吗？后端核心、配置及前端 public/admin/ 产物将恢复到该快照。`
+        : `确定回滚到 v${backup.version}（${backup.id}）吗？该快照仅含后端内核与配置（不含前端备份），回滚后将保留当前前端界面。`
+      : `确定回滚到 v${backup.version}（${backup.id}）吗？代码和配置将恢复到该版本。`
   try {
     await ElMessageBox.confirm(
-      `确定回滚到 v${backup.version}（${backup.id}）吗？代码和配置将恢复到该版本。`,
+      confirmMsg,
       '回滚确认',
       {
         confirmButtonText: '确认回滚',

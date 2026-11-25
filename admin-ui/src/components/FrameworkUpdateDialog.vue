@@ -183,6 +183,8 @@ export interface FrameworkReleaseInfo {
   patch_sha256?: string
   core_download_url?: string
   core_patch_sha256?: string
+  full_download_url?: string
+  full_patch_sha256?: string
   frontend_status?: FrontendStatusInfo
   min_php?: string
 }
@@ -252,13 +254,26 @@ const handleConfirm = async () => {
   updating.value = true
   try {
     const preserveFrontend = updateMode.value === 'preserve_frontend'
-    const useCorePackage = preserveFrontend && Boolean(props.frameworkInfo.core_download_url)
-    const targetUrl = useCorePackage
-      ? props.frameworkInfo.core_download_url
-      : props.frameworkInfo.download_url
-    const targetSha256 = useCorePackage
-      ? props.frameworkInfo.core_patch_sha256
-      : props.frameworkInfo.patch_sha256
+    let targetUrl: string | undefined
+    let targetSha256: string | undefined
+
+    if (preserveFrontend) {
+      const useCorePackage = Boolean(props.frameworkInfo.core_download_url)
+      targetUrl = useCorePackage
+        ? props.frameworkInfo.core_download_url
+        : props.frameworkInfo.download_url
+      targetSha256 = useCorePackage
+        ? props.frameworkInfo.core_patch_sha256 || props.frameworkInfo.patch_sha256
+        : props.frameworkInfo.patch_sha256
+    } else {
+      const useFullPackage = Boolean(props.frameworkInfo.full_download_url)
+      targetUrl = useFullPackage
+        ? props.frameworkInfo.full_download_url
+        : props.frameworkInfo.download_url
+      targetSha256 = useFullPackage
+        ? props.frameworkInfo.full_patch_sha256
+        : props.frameworkInfo.patch_sha256
+    }
 
     const payload: {
       download_url?: string

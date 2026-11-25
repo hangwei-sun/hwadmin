@@ -25,7 +25,7 @@ use RecursiveIteratorIterator;
  */
 class SystemUpdater
 {
-    public const CURRENT_VERSION = '1.6.5';
+    public const CURRENT_VERSION = '1.6.6';
     public const CHANNEL_STABLE = 'stable';
     public const CHANNEL_BETA = 'beta';
     public const VALID_CHANNELS = [self::CHANNEL_STABLE, self::CHANNEL_BETA];
@@ -277,9 +277,9 @@ class SystemUpdater
     }
 
     /**
-     * 安全追加或补全 URL 查询参数（不覆盖已有非空参数）
+     * 安全追加或补全 URL 查询参数（默认不覆盖已有非空参数，可选覆盖）
      */
-    public static function appendUrlQueryParams(string $url, array $extraParams): string
+    public static function appendUrlQueryParams(string $url, array $extraParams, bool $overwrite = false): string
     {
         if ($url === '' || empty($extraParams)) {
             return $url;
@@ -296,7 +296,7 @@ class SystemUpdater
             if ($value === null || $value === '') {
                 continue;
             }
-            if (!array_key_exists($key, $query) || $query[$key] === '') {
+            if ($overwrite || !array_key_exists($key, $query) || $query[$key] === '') {
                 $query[$key] = (string) $value;
             }
         }
@@ -365,10 +365,12 @@ class SystemUpdater
         $releaseDate = $remoteCatalog['framework']['release_date'] ?? '2026-11-25';
         $patchSha256 = strtolower(trim((string) ($remoteCatalog['framework']['patch_sha256'] ?? '')));
         $corePatchSha256 = strtolower(trim((string) ($remoteCatalog['framework']['core_patch_sha256'] ?? '')));
+        $fullPatchSha256 = strtolower(trim((string) ($remoteCatalog['framework']['full_patch_sha256'] ?? '')));
 
-        // 计算框架完整包与仅内核补丁包下载地址
+        // 计算框架默认补丁包、仅内核包与前后端完整包下载地址
         $rawFrameworkUrl = (string) ($remoteCatalog['framework']['download_url'] ?? '');
         $rawCoreUrl = (string) ($remoteCatalog['framework']['core_download_url'] ?? '');
+        $rawFullUrl = (string) ($remoteCatalog['framework']['full_download_url'] ?? '');
 
         if ($rawReleaseChannel === '' && $rawFrameworkUrl !== '' && str_contains($rawFrameworkUrl, 'channel=beta')) {
             $rawReleaseChannel = self::CHANNEL_BETA;
@@ -391,6 +393,16 @@ class SystemUpdater
             $resolvedSiteDomain,
             ''
         );
+        $fullDownloadUrl = $rawFullUrl !== ''
+            ? $this->resolveFrameworkPackageUrl(
+                $rawFullUrl,
+                $cleanGatewayUrl,
+                $releaseChannel,
+                $activeChannel,
+                $resolvedSiteDomain,
+                ''
+            )
+            : ($downloadUrl !== '' ? self::appendUrlQueryParams($downloadUrl, ['scope' => 'full'], true) : '');
 
         // 插件版本对比
         $pluginsUpdateMap = [];
@@ -479,6 +491,8 @@ class SystemUpdater
                 'patch_sha256'      => $patchSha256,
                 'core_download_url' => $coreDownloadUrl,
                 'core_patch_sha256' => $corePatchSha256,
+                'full_download_url' => $fullDownloadUrl,
+                'full_patch_sha256' => $fullPatchSha256,
                 'frontend_status'   => $this->detectFrontendStatus(),
                 'min_php'           => '8.1',
             ],
@@ -1046,8 +1060,15 @@ class SystemUpdater
         // 过滤并按时间倒序排列
         $validList = [];
         foreach ($list as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
             $path = (string) ($item['path'] ?? '');
             if (is_dir($path) || is_file($path)) {
+                if (($item['type'] ?? '') === 'framework') {
+                    $dir = rtrim($path, '/\\') . DIRECTORY_SEPARATOR;
+                    $item['has_frontend_backup'] = is_dir($path) && is_file($dir . 'public_admin.zip');
+                }
                 $validList[] = $item;
             }
         }
@@ -1107,7 +1128,9 @@ class SystemUpdater
 
             return [
                 'success' => true,
-                'msg'     => "已成功将 HwAdmin 主框架版本回滚至 {$target['version']}（含前后端代码与核心配置）！",
+                'msg'     => is_file($publicAdminZip)
+                    ? "已成功将 HwAdmin 主框架版本回滚至 {$target['version']}（含前后端代码与核心配置）！"
+                    : "已成功将 HwAdmin 主框架版本回滚至 {$target['version']}（含后端内核与核心配置，该历史快照不含前端产物）！",
             ];
         }
 

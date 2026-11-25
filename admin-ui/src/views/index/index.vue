@@ -97,7 +97,7 @@
     <el-dialog
       v-model="frameworkBackupDialogVisible"
       title="框架备份与回滚"
-      width="min(700px, 94vw)"
+      width="min(800px, 94vw)"
       destroy-on-close
     >
       <div v-if="!frameworkBackupsList.length" style="padding: 24px 0; text-align: center;">
@@ -110,9 +110,20 @@
             <code class="mono-id-badge">{{ row.id }}</code>
           </template>
         </el-table-column>
-        <el-table-column prop="version" label="版本" width="100">
+        <el-table-column prop="version" label="版本" width="95">
           <template #default="{ row }">
             <el-tag size="small" type="info">v{{ row.version }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="备份内容" width="120">
+          <template #default="{ row }">
+            <el-tag
+              size="small"
+              :type="row.has_frontend_backup ? 'success' : 'warning'"
+              effect="light"
+            >
+              {{ row.has_frontend_backup ? '含前端+内核' : '仅内核' }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="备份时间" width="165" />
@@ -613,7 +624,7 @@
 <script lang="ts" setup>
 import { reactive, ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { getDashboard, clearCache, checkSystemUpdates, setSystemUpdateChannel, getSystemBackups, rollbackSystemUpdate } from '/@/api/hwadmin'
+import { getDashboard, clearCache, checkSystemUpdates, setSystemUpdateChannel, getSystemBackups, rollbackSystemUpdate, type SystemBackupRecord } from '/@/api/hwadmin'
 import { useUserStore } from '/@/store/modules/user'
 import FrameworkUpdateDialog, { type FrameworkReleaseInfo } from '/@/components/FrameworkUpdateDialog.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -632,14 +643,14 @@ const switchingChannel = ref(false)
 const selectedUpdateChannel = ref<'stable' | 'beta'>('stable')
 const frameworkUpdateDialogVisible = ref(false)
 const frameworkBackupDialogVisible = ref(false)
-const frameworkBackupsList = ref<any[]>([])
+const frameworkBackupsList = ref<SystemBackupRecord[]>([])
 const rollingBackId = ref('')
 const trendViewMode = ref<'7d' | 'realtime'>('7d')
 
 const frameworkInfo = reactive<FrameworkReleaseInfo>({
   name: 'hwadmin',
   current_version: '',
-  latest_version: '1.6.5',
+  latest_version: '1.6.6',
   has_update: false,
   update_channel: 'stable',
   release_channel: 'stable',
@@ -649,6 +660,8 @@ const frameworkInfo = reactive<FrameworkReleaseInfo>({
   patch_sha256: '',
   core_download_url: '',
   core_patch_sha256: '',
+  full_download_url: '',
+  full_patch_sha256: '',
   frontend_status: undefined,
   min_php: '8.1',
 })
@@ -849,7 +862,7 @@ const tooltipStyle = computed(() => {
 })
 
 const displayCurrentVersion = computed(() => {
-  return frameworkInfo.current_version || systemInfo.hw_version || '1.6.5'
+  return frameworkInfo.current_version || systemInfo.hw_version || '1.6.6'
 })
 
 const openFrameworkBackupDialog = async () => {
@@ -863,10 +876,13 @@ const openFrameworkBackupDialog = async () => {
   }
 }
 
-const handleFrameworkRollback = async (backup: any) => {
+const handleFrameworkRollback = async (backup: SystemBackupRecord | Record<string, any>) => {
+  const scopeDesc = backup.has_frontend_backup
+    ? '后端核心代码、配置及前端 public/admin/ 产物将恢复到该快照。'
+    : '该快照仅含后端核心代码与配置（不含前端 public/admin/ 备份），回滚后将保留当前前端界面。'
   try {
     await ElMessageBox.confirm(
-      `确定将 HwAdmin 主框架回滚到 v${backup.version}（${backup.id}）吗？核心代码和配置将恢复到该快照。`,
+      `确定将 HwAdmin 主框架回滚到 v${backup.version}（${backup.id}）吗？${scopeDesc}`,
       '框架回滚确认',
       {
         confirmButtonText: '确认回滚',

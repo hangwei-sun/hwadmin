@@ -674,6 +674,136 @@ final class OtaChannelAndDependencyGuardTest extends TestCase
         $this->assertNull($capturedCalls[2]['preserve_frontend']);
     }
 
+    public function testCheckUpdatesPropagatesFullAndCoreUrlsAndBuildsScopeFullFallback(): void
+    {
+        $tmpRoot = $this->createIsolatedOtaTempRoot('full_optin');
+        $isolatedApp = new \think\App($tmpRoot);
+
+        $updater = new class($isolatedApp) extends SystemUpdater {
+            public bool $includeExplicitFull = true;
+
+            protected function fetchFromGateway(string $gatewayUrl, ?string $channel = null, ?string $siteDomain = null): ?array
+            {
+                $framework = [
+                    'latest_version'    => '1.6.6',
+                    'release_channel'   => $channel === self::CHANNEL_BETA ? 'beta' : 'stable',
+                    'release_date'      => '2026-11-25',
+                    'changelog'         => ['默认纯内核包 + 显式 scope=full 完整包'],
+                    'download_url'      => '/api/plugin/market/gateway/downloadFramework?version=1.6.6',
+                    'patch_sha256'      => str_repeat('1', 64),
+                    'core_download_url' => '/api/plugin/market/gateway/downloadFramework?version=1.6.6&scope=core',
+                    'core_patch_sha256' => str_repeat('2', 64),
+                ];
+
+                if ($this->includeExplicitFull) {
+                    $framework['full_download_url'] = '/api/plugin/market/gateway/downloadFramework?version=1.6.6&scope=full';
+                    $framework['full_patch_sha256'] = str_repeat('3', 64);
+                }
+
+                return [
+                    'framework' => $framework,
+                    'list'      => [],
+                ];
+            }
+        };
+
+        try {
+            // 1. 市场明确返回 full_download_url / full_patch_sha256 与 core_download_url / core_patch_sha256（含 beta 参数透传）
+            $resExplicit = $updater->checkUpdates(
+                'https://hw.baotoutv.cn/api/plugin/market/gateway',
+                'beta.example.com',
+                'beta'
+            );
+            $fwExplicit = $resExplicit['framework'];
+            $this->assertSame(
+                'https://hw.baotoutv.cn/api/plugin/market/gateway/downloadFramework?version=1.6.6&channel=beta&site_domain=beta.example.com',
+                $fwExplicit['download_url']
+            );
+            $this->assertSame(str_repeat('1', 64), $fwExplicit['patch_sha256']);
+            $this->assertSame(
+                'https://hw.baotoutv.cn/api/plugin/market/gateway/downloadFramework?version=1.6.6&scope=core&channel=beta&site_domain=beta.example.com',
+                $fwExplicit['core_download_url']
+            );
+            $this->assertSame(str_repeat('2', 64), $fwExplicit['core_patch_sha256']);
+            $this->assertSame(
+                'https://hw.baotoutv.cn/api/plugin/market/gateway/downloadFramework?version=1.6.6&scope=full&channel=beta&site_domain=beta.example.com',
+                $fwExplicit['full_download_url']
+            );
+            $this->assertSame(str_repeat('3', 64), $fwExplicit['full_patch_sha256']);
+
+            // 2. 反例/兼容旧市场：未返回 full_download_url 时基于 download_url 自动拼上 scope=full，且 full_patch_sha256 保持空串
+            $updater->includeExplicitFull = false;
+            $resFallback = $updater->checkUpdates(
+                'https://hw.baotoutv.cn/api/plugin/market/gateway',
+                'prod.example.com',
+                'stable'
+            );
+            $fwFallback = $resFallback['framework'];
+            $this->assertSame(
+                'https://hw.baotoutv.cn/api/plugin/market/gateway/downloadFramework?version=1.6.6',
+                $fwFallback['download_url']
+            );
+            $this->assertSame(
+                'https://hw.baotoutv.cn/api/plugin/market/gateway/downloadFramework?version=1.6.6&scope=full',
+                $fwFallback['full_download_url']
+            );
+            $this->assertSame('', $fwFallback['full_patch_sha256']);
+            $this->assertSame(str_repeat('2', 64), $fwFallback['core_patch_sha256']);
+        } finally {
+            $this->removeDirectoryRecursively($tmpRoot);
+        }
+    }
+
+    public function testGetBackupsReportsHasFrontendBackupFlagForNewAndLegacySnapshots(): void
+    {
+        $tmpRoot = $this->createIsolatedOtaTempRoot('backup_flag');
+        file_put_contents($tmpRoot . '/version.json', json_encode(['version' => '1.6.5'], JSON_UNESCAPED_UNICODE));
+        file_put_contents($tmpRoot . '/config/hwadmin.php', "<?php\nreturn ['version' => '1.6.5'];\n");
+        file_put_contents($tmpRoot . '/core/CoreKernel.php', "<?php\nreturn 'ok';\n");
+        file_put_contents($tmpRoot . '/public/admin/index.html', "<!doctype html><html><title>Admin</title></html>\n");
+
+        $isolatedApp = new \think\App($tmpRoot);
+        $updater = new SystemUpdater($isolatedApp);
+
+        try {
+            // 1. 新快照：包含 public_admin.zip
+            $newBackupId = $updater->backupFramework('1.6.5');
+
+            // 2. 模拟老版本快照：目录下无 public_admin.zip
+            $legacyBackupId = '20261124_000001_framework_1.6.4';
+            $legacyDir = $tmpRoot . '/runtime/backups/' . $legacyBackupId . '/';
+            @mkdir($legacyDir, 0755, true);
+            file_put_contents($legacyDir . 'version.json', json_encode(['version' => '1.6.4'], JSON_UNESCAPED_UNICODE));
+
+            $metaFile = $tmpRoot . '/runtime/backups/backups.json';
+            $records = json_decode((string) file_get_contents($metaFile), true);
+            $this->assertIsArray($records);
+            $records[] = [
+                'id'         => $legacyBackupId,
+                'type'       => 'framework',
+                'name'       => 'hwadmin',
+                'version'    => '1.6.4',
+                'created_at' => '2026-11-24 00:00:01',
+                'size'       => '12.3 KB',
+                'path'       => $legacyDir,
+            ];
+            file_put_contents($metaFile, json_encode($records, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+
+            $backups = $updater->getBackups();
+            $byId = [];
+            foreach ($backups as $item) {
+                $byId[$item['id']] = $item;
+            }
+
+            $this->assertArrayHasKey($newBackupId, $byId);
+            $this->assertArrayHasKey($legacyBackupId, $byId);
+            $this->assertTrue($byId[$newBackupId]['has_frontend_backup']);
+            $this->assertFalse($byId[$legacyBackupId]['has_frontend_backup']);
+        } finally {
+            $this->removeDirectoryRecursively($tmpRoot);
+        }
+    }
+
     private function createIsolatedOtaTempRoot(string $prefix): string
     {
         $tmpRoot = sys_get_temp_dir() . '/hwadmin_ota_' . $prefix . '_' . bin2hex(random_bytes(6));
