@@ -30,32 +30,13 @@
 运行时下载和系统安装仍需要网络及相应系统权限。遇到限制时，说明具体缺项与最短解决步骤，同时继续能完成的页面、业务和内容工作。
 
 ## 用户确认效果后上线
-
 先问用户一次必要的发布信息：服务器/面板访问方式、域名；小程序另需 AppID 和平台权限。Agent 依据 [部署与运维指南](docs/部署与运维指南.md)，选择目标环境已有的部署方式，完成构建、迁移、配置与实际访问验证。已有服务器不要求用户为了框架重新搭一套平台。
-
 交付用户的是应用和使用方式：访问地址、后台入口、账号交接、小程序预览/发布状态。保留必要的日志与恢复能力，但不把框架内部审计任务作为用户的操作流程。
 
-## AI 业务与插件开发目录安全边界（OTA 升级红绿灯）
-
-1. 🟢 **永久安全区（框架 OTA 升级永不覆写，业务/插件代码请放这里）**：
-   - `server/plugins/{插件名}/` 与 `server/public/plugins/{插件名}/`（**最推荐**：独立插件 + 免编译微视图 `admin.html`，与框架完全解耦，框架任意升级不受影响）；
-   - `server/app/adminapi/controller/{自定义业务目录}/`（避开 `system/`、`auth/`、`user/`、`Index.php`、`Dashboard.php`）；
-   - `server/app/common/model/{自定义业务模型}/`（避开 `system/` 与 8 个内置基础模型）；
-   - `server/app/common/service/{自定义业务服务}/`（避开 `ConfigService.php`、`DictService.php`、`DeploymentService.php`）；
-   - `server/app/api/controller/{自定义业务}/`（前台/小程序/H5 业务接口，避开 `Index.php`、`User.php`）；
-   - `server/database/migrations/` 中**新建**的时间戳迁移文件（严禁修改已有框架迁移文件）；
-   - `server/.env`、`server/config/database.php`、`server/public/uploads/`、`server/runtime/`。
-2. 🔴 **框架内核升级区（OTA 在线更新会同步覆写，严禁直接修改）**：
-   - `server/core/`、`server/app/adminapi/controller/{system,auth,user}/`、`server/app/adminapi/controller/{Index,Dashboard}.php`、`server/app/adminapi/route/app.php`；
-   - `server/app/api/controller/{Index,User}.php`、`server/app/api/route/app.php`、`server/app/index/`、`server/app/*.php`；
-   - `server/app/common/service/{ConfigService,DictService,DeploymentService}.php`、`server/app/common/model/system/`、8 个内置基础模型（`Admin`、`AdminLog`、`Attachment`、`AuthGroup`、`AuthRule`、`Config`、`User`、`UserGroup`）、`server/public/index.php`。
-3. 🟡 **前端二开特别约定（`admin-ui/` 与 `server/public/admin/`）**：
-   - 本地二次开发修改 `admin-ui/` 后运行 `pnpm build:sync` 会自动写入 `server/public/admin/hwadmin-official-ui.json`（`official: false`），框架在线更新会自动跳过 `public/admin/` 仅升级后端内核，绝不覆盖二开页面；**严禁删除或手动伪造 `hwadmin-official-ui.json`**；
-   - 若希望同时享受官方管理后台 UI 自动在线升级，建议优先采用「独立插件 + `public/plugins/{插件名}/admin.html` 免编译微视图」模式开发业务页面。
-4. 🛡️ **站点级保护文件与开发红线**：
-   - `server/config/hwadmin.php`、`server/public/.htaccess`、`server/public/nginx.htaccess`、`server/public/favicon.ico`、`server/public/admin/hwadmin.config.js` 由站点自主维护，OTA 不会覆写；禁止 AI 擅自破坏安全头或硬编码/私改 `admin_entry`。
-   - 严禁 `ALTER`/删除 `hw_config`、`hw_auth_rule`、`hw_admin`、`hw_plugin` 等系统核心表原有列，配置与菜单只能走 `ConfigService` / `MenuSync`。
-   - 执行生产迁移/上线前必须先运行 `python3 scripts/backup_restore.py backup`（或 `scripts/backup-restore.sh backup`）备份数据库。
+## AI 业务与插件开发目录安全边界（OTA 升级红绿灯，详见 [AGENTS.md](AGENTS.md)）
+1. 🟢 **安全区（OTA 永不覆写）**：`server/plugins/{插件名}/`、`server/public/plugins/{插件名}/`（最推荐免编译微视图 `admin.html`）、自定义业务的 `app/adminapi|api/controller/{业务}/`、`app/common/model|service/{业务}/`、新建迁移、`server/.env`、`config/database.php`、`public/uploads/`、`runtime/`。
+2. 🔴 **内核区（OTA 会覆写，禁直接修改）**：`server/core/`、系统内置控制器/路由/模型/服务（`system`/`auth`/`user`/`Index`/`Dashboard` 及 8 个基础模型）、`server/public/index.php`。
+3. 🟡 **前端二开与站点保护**：二开 `admin-ui/` 后 `pnpm build:sync` 自动写入 `server/public/admin/hwadmin-official-ui.json`（`official: false`），OTA 会自动跳过 `public/admin/`（严禁删改该标记）；`config/hwadmin.php`、`.htaccess`/`nginx.htaccess`、`hwadmin.config.js` 由站点维护，严禁 `ALTER`/删系统表列；生产迁移前必须先运行 `python3 scripts/backup_restore.py backup`。
 
 ---
 ## 可选：标准项目需求与部署模板（按需填写，留空按默认值推进）

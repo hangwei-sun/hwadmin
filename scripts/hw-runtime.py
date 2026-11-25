@@ -57,10 +57,10 @@ SUPPORTED_PLATFORMS: list[dict[str, Any]] = [
         "os": "windows",
         "versions": ["10", "11"],
         "arch": ["x86_64"],
-        "wsl_distros": ["Ubuntu 22.04", "Ubuntu 24.04"],
+        "wsl_distros": ["Ubuntu 22.04", "Ubuntu 24.04", "Ubuntu 26.04"],
         "modes": ["sqlite", "mysql", "pgsql", "docker"],
         "status": "supported",
-        "notes": "Windows 10/11 x64 + WSL2 (Ubuntu 22.04/24.04)；后端在 WSL2 运行，前端可在 Windows 或 WSL2 联调",
+        "notes": "Windows 10/11 x64 + WSL2 (Ubuntu 22.04/24.04/26.04)；后端在 WSL2 运行，前端可在 Windows 或 WSL2 联调",
     },
     {
         "id": "linux-ubuntu-22.04",
@@ -81,6 +81,16 @@ SUPPORTED_PLATFORMS: list[dict[str, Any]] = [
         "modes": ["sqlite", "mysql", "pgsql", "docker"],
         "status": "supported",
         "notes": "Ubuntu 24.04 LTS (x86_64 / arm64)",
+    },
+    {
+        "id": "linux-ubuntu-26.04",
+        "os": "linux",
+        "distro": "ubuntu",
+        "versions": ["26.04"],
+        "arch": ["x86_64", "arm64"],
+        "modes": ["sqlite", "mysql", "pgsql", "docker"],
+        "status": "supported",
+        "notes": "Ubuntu 26.04 LTS (x86_64 / arm64)",
     },
     {
         "id": "linux-debian-12",
@@ -106,7 +116,7 @@ UNSUPPORTED_POLICIES: list[dict[str, Any]] = [
         "reason": "仅支持 Windows 10/11 x64 (WSL2)，不支持 32 位/ARM64 或旧版 Windows",
     },
     {
-        "pattern": "other-linux (Ubuntu != 22.04/24.04, Debian != 12, Alpine/RHEL/CentOS host)",
+        "pattern": "other-linux (Ubuntu != 22.04/24.04/26.04, Debian != 12, Alpine/RHEL/CentOS host)",
         "status": "unsupported",
         "reason": "宿主机发行版不在已验收支持矩阵内（容器内镜像运行不等于宿主机直装受支持）",
     },
@@ -206,6 +216,18 @@ def detect_current_platform(
                 "status": "supported",
                 "reason": f"命中支持矩阵：Ubuntu 24.04 ({arch})",
             }
+        if ov in {"linux-ubuntu-26.04", "ubuntu-26.04", "linux-ubuntu-26.04-x86_64", "linux-ubuntu-26.04-arm64"}:
+            arch = "arm64" if ov.endswith("arm64") else "x86_64"
+            return {
+                "id": "linux-ubuntu-26.04",
+                "os": "linux",
+                "distro": "ubuntu",
+                "version": "26.04",
+                "arch": arch,
+                "is_wsl2": False,
+                "status": "supported",
+                "reason": f"命中支持矩阵：Ubuntu 26.04 ({arch})",
+            }
         if ov in {"linux-debian-12", "debian-12", "linux-debian-12-x86_64", "linux-debian-12-arm64"}:
             arch = "arm64" if ov.endswith("arm64") else "x86_64"
             return {
@@ -297,7 +319,7 @@ def detect_current_platform(
                 "status": "unsupported",
                 "reason": f"架构 {arch} 不受支持，仅支持 x86_64 与 arm64",
             }
-        if distro == "ubuntu" and ver in {"22.04", "24.04"}:
+        if distro == "ubuntu" and ver in {"22.04", "24.04", "26.04"}:
             return {
                 "id": f"linux-ubuntu-{ver}",
                 "os": "linux",
