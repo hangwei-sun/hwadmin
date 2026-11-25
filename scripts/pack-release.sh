@@ -2,7 +2,7 @@
 # ==============================================================================
 # HwAdmin 发布包一键构建入口
 # 支持:
-#   bash scripts/pack-release.sh [--mode=unified|deploy|dev|all] [v1.6.4]
+#   bash scripts/pack-release.sh [--mode=unified|deploy|dev|all] [v1.6.5]
 # ==============================================================================
 set -euo pipefail
 

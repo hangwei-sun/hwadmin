@@ -18,7 +18,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RELEASE_DIR="$ROOT/release"
 
-VERSION=$(python3 -c "import re, pathlib; m = re.search(r\"'version'\s*=>\s*'([^']+)'\", pathlib.Path('$ROOT/server/config/hwadmin.php').read_text(encoding='utf-8')); print(m.group(1) if m else '1.6.4')")
+VERSION=$(python3 -c "import re, pathlib; m = re.search(r\"'version'\s*=>\s*'([^']+)'\", pathlib.Path('$ROOT/server/config/hwadmin.php').read_text(encoding='utf-8')); print(m.group(1) if m else '1.6.5')")
 DEV_ZIP="$RELEASE_DIR/hwadmin-v${VERSION}.zip"
 if [ ! -f "$DEV_ZIP" ] && [ -f "$RELEASE_DIR/hwadmin-dev-v${VERSION}.zip" ]; then
     DEV_ZIP="$RELEASE_DIR/hwadmin-dev-v${VERSION}.zip"

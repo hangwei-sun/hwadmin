@@ -5,7 +5,7 @@
 
 return [
     // 框架底层基座版本（维护 HwAdmin 框架时变更，插件兼容检查依据此值）
-    'version'        => '1.6.4',
+    'version'        => '1.6.5',
 
     // 业务应用标识与业务版本（业务开发仅需维护业务版本，无需同步十处框架版本）
     'app_id'         => (string) env('APP_ID', 'hwadmin-app'),

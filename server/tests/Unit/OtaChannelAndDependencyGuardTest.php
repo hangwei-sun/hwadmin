@@ -342,6 +342,367 @@ final class OtaChannelAndDependencyGuardTest extends TestCase
         }
     }
 
+    public function testOfficialFrontendFingerprintMatchesAndSyncsPublicAdminOnUpgrade(): void
+    {
+        $tmpRoot = $this->createIsolatedOtaTempRoot('official');
+        $indexFile = $tmpRoot . '/public/admin/index.html';
+        $manifestFile = $tmpRoot . '/public/admin/hwadmin-official-ui.json';
+        $zipPath = $tmpRoot . '/official_patch.zip';
+
+        $v1Html = "<!doctype html><html><title>HwAdmin Official v1.6.4</title></html>\n";
+        $v2Html = "<!doctype html><html><title>HwAdmin Official v1.6.5</title></html>\n";
+        file_put_contents($indexFile, $v1Html);
+        file_put_contents($manifestFile, json_encode([
+            'official'          => true,
+            'version'           => '1.6.4',
+            'index_html_sha256' => hash('sha256', $v1Html),
+            'built_at'          => '2026-11-25T00:00:00Z',
+        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+
+        $zip = new \ZipArchive();
+        $this->assertTrue($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === true);
+        $zip->addFromString('server/core/OfficialSyncProbe.php', "<?php\nreturn '1.6.5';\n");
+        $zip->addFromString('server/version.json', json_encode(['version' => '1.6.5'], JSON_UNESCAPED_UNICODE));
+        $zip->addFromString('server/public/admin/index.html', $v2Html);
+        $zip->addFromString('server/public/admin/hwadmin-official-ui.json', json_encode([
+            'official'          => true,
+            'version'           => '1.6.5',
+            'index_html_sha256' => hash('sha256', $v2Html),
+            'built_at'          => '2026-11-25T01:00:00Z',
+        ], JSON_UNESCAPED_UNICODE));
+        $zip->close();
+
+        $isolatedApp = new \think\App($tmpRoot);
+        $updater = new class($isolatedApp) extends SystemUpdater {
+            protected function fetchFromGateway(string $gatewayUrl, ?string $channel = null, ?string $siteDomain = null): ?array
+            {
+                return [
+                    'framework' => [
+                        'latest_version'    => '1.6.5',
+                        'release_channel'   => 'stable',
+                        'release_date'      => '2026-11-25',
+                        'changelog'         => ['二开前端保护与核心增量升级'],
+                        'download_url'      => '/api/plugin/market/gateway/downloadFramework?version=1.6.5',
+                        'patch_sha256'      => str_repeat('b', 64),
+                        'core_download_url' => '/api/plugin/market/gateway/downloadFramework?version=1.6.5&scope=core',
+                        'core_patch_sha256' => str_repeat('c', 64),
+                    ],
+                    'list' => [],
+                ];
+            }
+        };
+
+        try {
+            $status = $updater->detectFrontendStatus();
+            $this->assertSame('official', $status['mode']);
+            $this->assertFalse($status['is_custom']);
+            $this->assertFalse($status['preserve_frontend_default']);
+
+            $check = $updater->checkUpdates('https://hw.baotoutv.cn/api/plugin/market/gateway', 'official.example.com');
+            $fw = $check['framework'];
+            $this->assertSame('official', $fw['frontend_status']['mode']);
+            $this->assertFalse($fw['frontend_status']['preserve_frontend_default']);
+            $this->assertSame(
+                'https://hw.baotoutv.cn/api/plugin/market/gateway/downloadFramework?version=1.6.5&scope=core',
+                $fw['core_download_url']
+            );
+            $this->assertSame(str_repeat('c', 64), $fw['core_patch_sha256']);
+
+            $applied = $updater->applyPatchArchive($zipPath, $status['preserve_frontend_default']);
+            $this->assertSame(4, $applied);
+            $this->assertSame($v2Html, file_get_contents($indexFile));
+            $this->assertSame("<?php\nreturn '1.6.5';\n", file_get_contents($tmpRoot . '/core/OfficialSyncProbe.php'));
+        } finally {
+            $this->removeDirectoryRecursively($tmpRoot);
+        }
+    }
+
+    public function testCustomFrontendIsDetectedAndPreservedDuringPatchApplication(): void
+    {
+        $tmpRoot = $this->createIsolatedOtaTempRoot('custom');
+        $indexFile = $tmpRoot . '/public/admin/index.html';
+        $customAssetFile = $tmpRoot . '/public/admin/assets/study-custom.js';
+        $manifestFile = $tmpRoot . '/public/admin/hwadmin-official-ui.json';
+        $customMarkerFile = $tmpRoot . '/public/admin/.custom-ui';
+        $zipPath = $tmpRoot . '/custom_protect_patch.zip';
+        @mkdir(dirname($customAssetFile), 0755, true);
+
+        $customHtml = "<!doctype html><html><title>Custom Study Admin</title></html>\n";
+        $customJs = "window.__STUDY_CUSTOM__ = 'preserve-me';\n";
+        file_put_contents($indexFile, $customHtml);
+        file_put_contents($customAssetFile, $customJs);
+
+        $isolatedApp = new \think\App($tmpRoot);
+        $updater = new SystemUpdater($isolatedApp);
+
+        try {
+            // 场景 A：本地编译默认 official=false
+            file_put_contents($manifestFile, json_encode([
+                'official'          => false,
+                'version'           => '1.6.4',
+                'index_html_sha256' => hash('sha256', $customHtml),
+            ], JSON_UNESCAPED_UNICODE));
+            $statusA = $updater->detectFrontendStatus();
+            $this->assertSame('custom', $statusA['mode']);
+            $this->assertTrue($statusA['is_custom']);
+            $this->assertTrue($statusA['preserve_frontend_default']);
+
+            // 场景 B：official=true 但 index.html 被用户修改（SHA256 不一致）
+            file_put_contents($manifestFile, json_encode([
+                'official'          => true,
+                'version'           => '1.6.4',
+                'index_html_sha256' => str_repeat('0', 64),
+            ], JSON_UNESCAPED_UNICODE));
+            $statusB = $updater->detectFrontendStatus();
+            $this->assertSame('custom', $statusB['mode']);
+            $this->assertTrue($statusB['is_custom']);
+            $this->assertTrue($statusB['preserve_frontend_default']);
+
+            // 场景 C：存在 .custom-ui 标记文件（即使指纹恰好匹配也判定为二开前端）
+            file_put_contents($manifestFile, json_encode([
+                'official'          => true,
+                'version'           => '1.6.4',
+                'index_html_sha256' => hash('sha256', $customHtml),
+            ], JSON_UNESCAPED_UNICODE));
+            file_put_contents($customMarkerFile, "custom-ui\n");
+            $statusC = $updater->detectFrontendStatus();
+            $this->assertSame('custom', $statusC['mode']);
+            $this->assertTrue($statusC['is_custom']);
+            $this->assertTrue($statusC['preserve_frontend_default']);
+
+            // 构建同时包含后端内核与官方 public/admin/ 产物的全量补丁包
+            $zip = new \ZipArchive();
+            $this->assertTrue($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === true);
+            $zip->addFromString('server/core/CustomSiteKernel.php', "<?php\nreturn 'kernel-1.6.5';\n");
+            $zip->addFromString('server/version.json', json_encode(['version' => '1.6.5'], JSON_UNESCAPED_UNICODE));
+            $zip->addFromString('server/public/admin/index.html', '<html>SHOULD_NOT_OVERWRITE</html>');
+            $zip->addFromString('server/public/admin/assets/study-custom.js', 'WIPED_BY_OTA');
+            $zip->addFromString('server/public/admin/assets/official-new.js', 'SHOULD_NOT_BE_CREATED');
+            $zip->close();
+
+            // 执行 applyPatchArchive($zipPath, true)：硬跳过 public/admin/，仅更新后端
+            $applied = $updater->applyPatchArchive($zipPath, true);
+            $this->assertSame(2, $applied);
+            $this->assertSame($customHtml, file_get_contents($indexFile));
+            $this->assertSame($customJs, file_get_contents($customAssetFile));
+            $this->assertFileDoesNotExist($tmpRoot . '/public/admin/assets/official-new.js');
+            $this->assertSame("<?php\nreturn 'kernel-1.6.5';\n", file_get_contents($tmpRoot . '/core/CustomSiteKernel.php'));
+            $verJson = json_decode((string) file_get_contents($tmpRoot . '/version.json'), true);
+            $this->assertSame('1.6.5', $verJson['version'] ?? '');
+        } finally {
+            $this->removeDirectoryRecursively($tmpRoot);
+        }
+    }
+
+    public function testLegacySiteDetectsCustomBusinessModulesVsCleanOfficialBaseline(): void
+    {
+        $tmpRoot = $this->createIsolatedOtaTempRoot('legacy');
+        // 无 hwadmin-official-ui.json 的历史老站
+        @mkdir($tmpRoot . '/app/adminapi/controller/system', 0755, true);
+        @mkdir($tmpRoot . '/app/common/model', 0755, true);
+        file_put_contents($tmpRoot . '/app/adminapi/controller/Index.php', "<?php\n");
+        file_put_contents($tmpRoot . '/app/adminapi/controller/system/Plugin.php', "<?php\n");
+        file_put_contents($tmpRoot . '/app/common/model/Config.php', "<?php\n");
+
+        $isolatedApp = new \think\App($tmpRoot);
+        $updater = new SystemUpdater($isolatedApp);
+
+        try {
+            // 1. 仅存在官方内置控制器与模型 -> legacy_clean
+            $cleanStatus = $updater->detectFrontendStatus();
+            $this->assertSame('legacy_clean', $cleanStatus['mode']);
+            $this->assertFalse($cleanStatus['is_custom']);
+            $this->assertFalse($cleanStatus['preserve_frontend_default']);
+
+            // 2. 新增自建业务控制器 -> legacy_custom_suspected（默认保留前端）
+            $bizCtrl = $tmpRoot . '/app/adminapi/controller/biz/StudyOrder.php';
+            @mkdir(dirname($bizCtrl), 0755, true);
+            file_put_contents($bizCtrl, "<?php\n");
+
+            $suspectedCtrlStatus = $updater->detectFrontendStatus();
+            $this->assertSame('legacy_custom_suspected', $suspectedCtrlStatus['mode']);
+            $this->assertTrue($suspectedCtrlStatus['is_custom']);
+            $this->assertTrue($suspectedCtrlStatus['preserve_frontend_default']);
+            $this->assertStringContainsString('StudyOrder.php', $suspectedCtrlStatus['reason']);
+
+            // 3. 移除自建控制器、仅保留自建模型 -> 同样触发 legacy_custom_suspected
+            @unlink($bizCtrl);
+            @rmdir(dirname($bizCtrl));
+            file_put_contents($tmpRoot . '/app/common/model/StudyCourse.php', "<?php\n");
+
+            $suspectedModelStatus = $updater->detectFrontendStatus();
+            $this->assertSame('legacy_custom_suspected', $suspectedModelStatus['mode']);
+            $this->assertTrue($suspectedModelStatus['is_custom']);
+            $this->assertTrue($suspectedModelStatus['preserve_frontend_default']);
+            $this->assertStringContainsString('StudyCourse.php', $suspectedModelStatus['reason']);
+        } finally {
+            $this->removeDirectoryRecursively($tmpRoot);
+        }
+    }
+
+    public function testBackupFrameworkArchivesPublicAdminAndAppCoreAndRollbackRestoresExactCustomFiles(): void
+    {
+        $tmpRoot = $this->createIsolatedOtaTempRoot('rollback');
+        @mkdir($tmpRoot . '/app/adminapi/controller/system', 0755, true);
+        @mkdir($tmpRoot . '/app/adminapi/controller/biz', 0755, true);
+        @mkdir($tmpRoot . '/public/admin/assets', 0755, true);
+
+        $origVersion = json_encode(['name' => 'hwadmin', 'version' => '1.6.4'], JSON_UNESCAPED_UNICODE);
+        $origConfig = "<?php\nreturn ['version' => '1.6.4'];\n";
+        $origCore = "<?php\nreturn 'core-v1.6.4';\n";
+        $origAppCore = "<?php\nreturn 'app-index-v1.6.4';\n";
+        $origBizApp = "<?php\nreturn 'user-biz-controller';\n";
+        $origIndexHtml = "<!doctype html><html><title>Custom UI v1.6.4</title></html>\n";
+        $origCustomJs = "console.log('study-custom-v1.6.4');\n";
+
+        file_put_contents($tmpRoot . '/version.json', $origVersion);
+        file_put_contents($tmpRoot . '/config/hwadmin.php', $origConfig);
+        file_put_contents($tmpRoot . '/core/FrameworkCore.php', $origCore);
+        file_put_contents($tmpRoot . '/app/adminapi/controller/Index.php', $origAppCore);
+        file_put_contents($tmpRoot . '/app/adminapi/controller/biz/CustomBiz.php', $origBizApp);
+        file_put_contents($tmpRoot . '/public/admin/index.html', $origIndexHtml);
+        file_put_contents($tmpRoot . '/public/admin/assets/study-custom.js', $origCustomJs);
+
+        $isolatedApp = new \think\App($tmpRoot);
+        $updater = new SystemUpdater($isolatedApp);
+
+        try {
+            $backupId = $updater->backupFramework('1.6.4');
+            $backupDir = $tmpRoot . '/runtime/backups/' . $backupId . '/';
+            $this->assertFileExists($backupDir . 'version.json');
+            $this->assertFileExists($backupDir . 'hwadmin.php');
+            $this->assertFileExists($backupDir . 'core.zip');
+            $this->assertFileExists($backupDir . 'public_admin.zip');
+            $this->assertFileExists($backupDir . 'app_core.zip');
+
+            // 模拟强行同步覆盖升级（覆写核心、app官方控制器、配置与 public/admin 自定义文件）
+            $overwriteZip = $tmpRoot . '/overwrite_v165.zip';
+            $zip = new \ZipArchive();
+            $this->assertTrue($zip->open($overwriteZip, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === true);
+            $zip->addFromString('server/version.json', json_encode(['name' => 'hwadmin', 'version' => '1.6.5'], JSON_UNESCAPED_UNICODE));
+            $zip->addFromString('server/config/hwadmin.php', "<?php\nreturn ['version' => '1.6.5'];\n");
+            $zip->addFromString('server/core/FrameworkCore.php', "<?php\nreturn 'core-v1.6.5';\n");
+            $zip->addFromString('server/app/adminapi/controller/Index.php', "<?php\nreturn 'app-index-v1.6.5';\n");
+            $zip->addFromString('server/public/admin/index.html', '<html>OFFICIAL_V165_OVERWROTE_ME</html>');
+            $zip->addFromString('server/public/admin/assets/study-custom.js', 'OVERWRITTEN_JS');
+            $zip->addFromString('server/public/admin/assets/official-v165.js', 'NEW_CHUNK');
+            $zip->close();
+
+            $updater->applyPatchArchive($overwriteZip, false);
+            $this->assertSame('<html>OFFICIAL_V165_OVERWROTE_ME</html>', file_get_contents($tmpRoot . '/public/admin/index.html'));
+            $this->assertFileExists($tmpRoot . '/public/admin/assets/official-v165.js');
+
+            // 调用一键无损回滚
+            $rollback = $updater->rollbackUpdate($backupId);
+            $this->assertTrue($rollback['success']);
+
+            $this->assertSame($origVersion, file_get_contents($tmpRoot . '/version.json'));
+            $this->assertSame($origConfig, file_get_contents($tmpRoot . '/config/hwadmin.php'));
+            $this->assertSame($origCore, file_get_contents($tmpRoot . '/core/FrameworkCore.php'));
+            $this->assertSame($origAppCore, file_get_contents($tmpRoot . '/app/adminapi/controller/Index.php'));
+            $this->assertSame($origBizApp, file_get_contents($tmpRoot . '/app/adminapi/controller/biz/CustomBiz.php'));
+            $this->assertSame($origIndexHtml, file_get_contents($tmpRoot . '/public/admin/index.html'));
+            $this->assertSame($origCustomJs, file_get_contents($tmpRoot . '/public/admin/assets/study-custom.js'));
+            $this->assertFileDoesNotExist($tmpRoot . '/public/admin/assets/official-v165.js');
+        } finally {
+            $this->removeDirectoryRecursively($tmpRoot);
+        }
+    }
+
+    public function testPluginUpdateFrameworkEndpointForwardsPreserveFrontendOption(): void
+    {
+        $this->closeDbConnections();
+        $app = $this->createIsolatedApp();
+
+        $capturedCalls = new \ArrayObject();
+        $mockUpdater = new class($app, $capturedCalls) extends SystemUpdater {
+            public function __construct(\think\App $app, private \ArrayObject $capturedCalls)
+            {
+                parent::__construct($app);
+            }
+
+            public function updateFramework(?string $packageUrl = null, ?string $expectedSha256 = null, ?bool $preserveFrontend = null): array
+            {
+                $this->capturedCalls->append([
+                    'package_url'       => $packageUrl,
+                    'expected_sha256'   => $expectedSha256,
+                    'preserve_frontend' => $preserveFrontend,
+                ]);
+
+                return [
+                    'success'            => true,
+                    'new_version'        => self::CURRENT_VERSION,
+                    'backup_id'          => 'mock_backup',
+                    'frontend_preserved' => $preserveFrontend ?? true,
+                    'msg'                => 'ok',
+                ];
+            }
+        };
+
+        $cases = [
+            ['post' => ['download_url' => '', 'preserve_frontend' => true], 'expected' => true],
+            ['post' => ['download_url' => '', 'preserve_frontend' => 'false'], 'expected' => false],
+            ['post' => ['download_url' => ''], 'expected' => null],
+        ];
+
+        foreach ($cases as $case) {
+            $req = $app->make(Request::class, [], true);
+            $req->setMethod('POST');
+            $req->setAction('updateFramework');
+            $req->withPost($case['post']);
+            $req->withHeader([
+                'accept'        => 'application/json',
+                'authorization' => 'Bearer ' . $this->adminToken,
+                'x-token'       => $this->adminToken,
+            ]);
+            $app->instance('request', $req);
+            $app->instance(SystemUpdater::class, $mockUpdater);
+
+            try {
+                $ctrl = $app->make(PluginControllerApi::class, [], true);
+                $ctrl->updateFramework();
+                $this->fail('Plugin::updateFramework 应抛出 HttpResponseException');
+            } catch (HttpResponseException $e) {
+                $resp = $e->getResponse();
+                $this->assertSame(200, $resp->getCode());
+            }
+        }
+
+        $this->assertCount(3, $capturedCalls);
+        $this->assertTrue($capturedCalls[0]['preserve_frontend']);
+        $this->assertFalse($capturedCalls[1]['preserve_frontend']);
+        $this->assertNull($capturedCalls[2]['preserve_frontend']);
+    }
+
+    private function createIsolatedOtaTempRoot(string $prefix): string
+    {
+        $tmpRoot = sys_get_temp_dir() . '/hwadmin_ota_' . $prefix . '_' . bin2hex(random_bytes(6));
+        @mkdir($tmpRoot . '/core', 0755, true);
+        @mkdir($tmpRoot . '/config', 0755, true);
+        @mkdir($tmpRoot . '/public/admin', 0755, true);
+        @mkdir($tmpRoot . '/runtime/backups', 0755, true);
+        return $tmpRoot;
+    }
+
+    private function removeDirectoryRecursively(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($iterator as $item) {
+            if ($item->isDir()) {
+                @rmdir($item->getPathname());
+            } else {
+                @unlink($item->getPathname());
+            }
+        }
+        @rmdir($dir);
+    }
+
     private function invokePluginController(string $method, string $httpMethod, array $post = [], string $token = ''): array
     {
         $this->closeDbConnections();

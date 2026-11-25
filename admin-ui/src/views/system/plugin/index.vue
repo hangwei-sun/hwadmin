@@ -1285,8 +1285,8 @@ const selectedUpdateChannel = ref<'stable' | 'beta'>('stable')
 const frameworkUpdateDialogVisible = ref(false)
 const frameworkInfo = reactive<FrameworkReleaseInfo>({
   name: 'hwadmin',
-  current_version: '1.6.4',
-  latest_version: '1.6.4',
+  current_version: '1.6.5',
+  latest_version: '1.6.5',
   has_update: false,
   update_channel: 'stable',
   release_channel: 'stable',
@@ -1294,10 +1294,13 @@ const frameworkInfo = reactive<FrameworkReleaseInfo>({
   changelog: [],
   download_url: '',
   patch_sha256: '',
+  core_download_url: '',
+  core_patch_sha256: '',
+  frontend_status: undefined,
   min_php: '8.1',
 })
 const displayCurrentVersion = computed(() => {
-  return frameworkInfo.current_version || '1.6.4'
+  return frameworkInfo.current_version || '1.6.5'
 })
 
 // 备份与指南抽屉/弹窗

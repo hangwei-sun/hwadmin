@@ -11,7 +11,7 @@ SERVER_DIR="$ROOT/server"
 RELEASE_DIR="$ROOT/release"
 
 # 1. 解析目标版本号 (优先读取传入参数，其次读取 server/version.json)
-DEFAULT_VER="1.6.4"
+DEFAULT_VER="1.6.5"
 if [ -f "$SERVER_DIR/version.json" ]; then
     DETECTED_VER=$(grep -o '"version": *"[^"]*"' "$SERVER_DIR/version.json" | cut -d'"' -f4 || true)
     if [ -n "$DETECTED_VER" ]; then
@@ -70,6 +70,25 @@ mkdir -p "$STAGE/hwadmin/runtime/cache" \
          "$STAGE/hwadmin/public/plugins"
 
 touch "$STAGE/hwadmin/runtime/.gitkeep"
+
+# 官方发版打包时强制生成 official=true 的纯净前端指纹清单
+if [ -f "$STAGE/hwadmin/public/admin/index.html" ]; then
+    python3 - "$STAGE/hwadmin/public/admin/index.html" "$STAGE/hwadmin/public/admin/hwadmin-official-ui.json" "$VERSION" << 'PY'
+import hashlib, json, pathlib, sys
+from datetime import datetime, timezone
+
+index_path = pathlib.Path(sys.argv[1])
+out_path = pathlib.Path(sys.argv[2])
+ver = sys.argv[3]
+payload = {
+    "official": True,
+    "version": ver,
+    "index_html_sha256": hashlib.sha256(index_path.read_bytes()).hexdigest(),
+    "built_at": datetime.now(timezone.utc).isoformat(),
+}
+out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+fi
 
 # 4. 执行 ZIP 打包
 TARGET_ZIP="$RELEASE_DIR/hwadmin-v${VERSION}.zip"

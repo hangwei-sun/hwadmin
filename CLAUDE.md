@@ -1,6 +1,6 @@
 # HwAdmin Agent 快速入口
 
-框架版本：1.6.4。目标是让用户描述业务，你负责尽快交付可预览、可使用的应用。
+框架版本：1.6.5。目标是让用户描述业务，你负责尽快交付可预览、可使用的应用。
 
 先读 [START_HERE.md](START_HERE.md)。按网站、后台或小程序选择 `hw start`，默认 SQLite（`runtime/hwadmin.sqlite` / `runtime/dev.sqlite`），不要求用户先配数据库、阅读路线图或完成框架审计清单。
 

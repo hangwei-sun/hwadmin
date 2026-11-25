@@ -639,14 +639,17 @@ const trendViewMode = ref<'7d' | 'realtime'>('7d')
 const frameworkInfo = reactive<FrameworkReleaseInfo>({
   name: 'hwadmin',
   current_version: '',
-  latest_version: '1.6.4',
+  latest_version: '1.6.5',
   has_update: false,
   update_channel: 'stable',
   release_channel: 'stable',
-  release_date: '2026-11-24',
+  release_date: '2026-11-25',
   changelog: [],
   download_url: '',
   patch_sha256: '',
+  core_download_url: '',
+  core_patch_sha256: '',
+  frontend_status: undefined,
   min_php: '8.1',
 })
 
@@ -846,7 +849,7 @@ const tooltipStyle = computed(() => {
 })
 
 const displayCurrentVersion = computed(() => {
-  return frameworkInfo.current_version || systemInfo.hw_version || '1.6.4'
+  return frameworkInfo.current_version || systemInfo.hw_version || '1.6.5'
 })
 
 const openFrameworkBackupDialog = async () => {

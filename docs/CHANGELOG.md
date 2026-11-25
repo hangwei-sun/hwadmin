@@ -1,3 +1,19 @@
+## [1.6.5] - 2026-11-25
+
+### 二开前端保护与 OTA 全量备份回滚升级
+- **官方纯净前端指纹生成（区分官方纯净前端与二开自定义编译前端）**：
+  - [sync-to-server.mjs](../admin-ui/scripts/sync-to-server.mjs)：执行 `pnpm --dir admin-ui build:sync` 同步构建产物至 `server/public/admin/` 时自动生成 `hwadmin-official-ui.json`（仅当 `HWADMIN_OFFICIAL_BUILD=1` 时 `official: true`，普通本地二开构建默认 `official: false`）；
+  - [build-release.py](../scripts/build-release.py) 与 [build-release.sh](../scripts/build-release.sh)：官方发版打包时自动写入 `official: true` 与 `server/public/admin/index.html` 实时 SHA256 至发行包内 `server/public/admin/hwadmin-official-ui.json`。
+- **后端智能检测、强制跳过保护与全量快照回滚**：
+  - [SystemUpdater.php](../server/core/plugin/SystemUpdater.php)：新增 `detectFrontendStatus()` 自动识别 `official` / `custom` / `legacy_custom_suspected` / `legacy_clean` 四态；`checkUpdates()` 透传 `frontend_status`、`core_download_url`、`core_patch_sha256`；`applyPatchArchive()` 与 `updateFramework()` 支持 `preserveFrontend` 硬跳过 `public/admin/` 覆写；
+  - `backupFramework()` 新增打包 `public/admin/`（`public_admin.zip`）与 OTA 覆盖范围 `app/` 核心文件（`app_core.zip`），`rollbackUpdate()` 支持完整还原前后端代码、配置与 OPcache 失效；
+  - [Plugin.php](../server/app/adminapi/controller/system/Plugin.php)：`updateFramework()` 支持接收并透传可选 `preserve_frontend` 布尔参数。
+- **前端升级弹窗透明选择与风险提示**：
+  - [FrameworkUpdateDialog.vue](../admin-ui/src/components/FrameworkUpdateDialog.vue)、[hwadmin.ts](../admin-ui/src/api/hwadmin.ts)、[index/index.vue](../admin-ui/src/views/index/index.vue) 与 [plugin/index.vue](../admin-ui/src/views/system/plugin/index.vue)：展示前端环境识别结果，提供“仅更新后端内核（保留当前前端 `public/admin/`）”与“同步更新前后端”模式选择，二开站点手动选择全量覆盖时弹出醒目红色警告。
+- **自动化验证**：
+  - [OtaChannelAndDependencyGuardTest.php](../server/tests/Unit/OtaChannelAndDependencyGuardTest.php)：新增官方指纹同步、二开前端保护（含 `.custom-ui` 与指纹不一致）、历史老站业务模块探测、全量备份与一键无损回滚、控制器参数透传正反例 PHPUnit 测试。
+- **版本号判定**：本次为 OTA 升级二开前端保护与全量快照回滚机制架构升级，无数据库表结构变化，按 patch 从 `1.6.4` 升级至 `1.6.5`。
+
 ## [1.6.4] - 2026-11-24
 
 ### OTA 热更新加固（P2）

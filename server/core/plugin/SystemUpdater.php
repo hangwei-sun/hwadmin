@@ -25,10 +25,102 @@ use RecursiveIteratorIterator;
  */
 class SystemUpdater
 {
-    public const CURRENT_VERSION = '1.6.4';
+    public const CURRENT_VERSION = '1.6.5';
     public const CHANNEL_STABLE = 'stable';
     public const CHANNEL_BETA = 'beta';
     public const VALID_CHANNELS = [self::CHANNEL_STABLE, self::CHANNEL_BETA];
+
+    /**
+     * 官方内置后台控制器相对路径列表（用于无指纹历史站二开探测）
+     */
+    private const OFFICIAL_ADMIN_CONTROLLERS = [
+        'Dashboard.php',
+        'Index.php',
+        'auth/Admin.php',
+        'auth/AdminLog.php',
+        'auth/Group.php',
+        'auth/Rule.php',
+        'system/Attachment.php',
+        'system/Config.php',
+        'system/Crontab.php',
+        'system/Devops.php',
+        'system/Dict.php',
+        'system/Plugin.php',
+        'user/Group.php',
+        'user/User.php',
+    ];
+
+    /**
+     * 官方内置公共模型相对路径列表（用于无指纹历史站二开探测）
+     */
+    private const OFFICIAL_COMMON_MODELS = [
+        'Admin.php',
+        'AdminLog.php',
+        'Attachment.php',
+        'AuthGroup.php',
+        'AuthRule.php',
+        'Config.php',
+        'User.php',
+        'UserGroup.php',
+        'system/Crontab.php',
+        'system/CrontabLog.php',
+        'system/Dict.php',
+        'system/DictItem.php',
+    ];
+
+    /**
+     * OTA 在线更新覆盖范围的官方 app/ 核心文件清单（用于升级前原子备份与一键回滚）
+     */
+    private const OFFICIAL_APP_CORE_FILES = [
+        '.htaccess',
+        'AppService.php',
+        'ExceptionHandle.php',
+        'Request.php',
+        'common.php',
+        'event.php',
+        'middleware.php',
+        'provider.php',
+        'service.php',
+        'adminapi/route/app.php',
+        'adminapi/controller/Dashboard.php',
+        'adminapi/controller/Index.php',
+        'adminapi/controller/auth/Admin.php',
+        'adminapi/controller/auth/AdminLog.php',
+        'adminapi/controller/auth/Group.php',
+        'adminapi/controller/auth/Rule.php',
+        'adminapi/controller/system/Attachment.php',
+        'adminapi/controller/system/Config.php',
+        'adminapi/controller/system/Crontab.php',
+        'adminapi/controller/system/Devops.php',
+        'adminapi/controller/system/Dict.php',
+        'adminapi/controller/system/Plugin.php',
+        'adminapi/controller/user/Group.php',
+        'adminapi/controller/user/User.php',
+        'api/controller/Index.php',
+        'api/controller/User.php',
+        'api/route/app.php',
+        'common/model/Admin.php',
+        'common/model/AdminLog.php',
+        'common/model/Attachment.php',
+        'common/model/AuthGroup.php',
+        'common/model/AuthRule.php',
+        'common/model/Config.php',
+        'common/model/User.php',
+        'common/model/UserGroup.php',
+        'common/model/system/Crontab.php',
+        'common/model/system/CrontabLog.php',
+        'common/model/system/Dict.php',
+        'common/model/system/DictItem.php',
+        'common/service/ConfigService.php',
+        'common/service/DeploymentService.php',
+        'common/service/DictService.php',
+        'index/controller/Index.php',
+        'index/route/app.php',
+        'index/view/cms/index.html',
+        'index/view/portal/index.html',
+        'install/controller/Index.php',
+        'install/view/index.html',
+    ];
 
     protected string $runtimeBackupDir;
     protected string $metaFile;
@@ -270,38 +362,35 @@ class SystemUpdater
             '4. 增强免编译微视图容器 (Micro-View) 即插即用运行支持',
             '5. 完善 Web 安装向导 SQLite 零配置极速安装选项',
         ];
-        $releaseDate = $remoteCatalog['framework']['release_date'] ?? '2026-11-05';
+        $releaseDate = $remoteCatalog['framework']['release_date'] ?? '2026-11-25';
         $patchSha256 = strtolower(trim((string) ($remoteCatalog['framework']['patch_sha256'] ?? '')));
+        $corePatchSha256 = strtolower(trim((string) ($remoteCatalog['framework']['core_patch_sha256'] ?? '')));
 
-        // 计算框架下载地址
-        $rawFrameworkUrl = $remoteCatalog['framework']['download_url'] ?? '';
-        if ($rawFrameworkUrl !== '') {
-            if (str_starts_with($rawFrameworkUrl, 'http://') || str_starts_with($rawFrameworkUrl, 'https://')) {
-                $downloadUrl = $rawFrameworkUrl;
-            } elseif ($cleanGatewayUrl) {
-                $parts = parse_url($cleanGatewayUrl);
-                $scheme = $parts['scheme'] ?? 'http';
-                $host = $parts['host'] ?? '127.0.0.1';
-                $port = isset($parts['port']) ? ':' . $parts['port'] : '';
-                $downloadUrl = $scheme . '://' . $host . $port . '/' . ltrim($rawFrameworkUrl, '/');
-            } else {
-                $downloadUrl = $rawFrameworkUrl;
-            }
-        } else {
-            $downloadUrl = $cleanGatewayUrl ? $cleanGatewayUrl . '/download?name=framework' : '';
-        }
+        // 计算框架完整包与仅内核补丁包下载地址
+        $rawFrameworkUrl = (string) ($remoteCatalog['framework']['download_url'] ?? '');
+        $rawCoreUrl = (string) ($remoteCatalog['framework']['core_download_url'] ?? '');
 
-        if ($rawReleaseChannel === '' && $downloadUrl !== '' && str_contains($downloadUrl, 'channel=beta')) {
+        if ($rawReleaseChannel === '' && $rawFrameworkUrl !== '' && str_contains($rawFrameworkUrl, 'channel=beta')) {
             $rawReleaseChannel = self::CHANNEL_BETA;
         }
         $releaseChannel = self::normalizeUpdateChannel($rawReleaseChannel !== '' ? $rawReleaseChannel : self::CHANNEL_STABLE);
 
-        if ($downloadUrl !== '' && ($releaseChannel === self::CHANNEL_BETA || $activeChannel === self::CHANNEL_BETA)) {
-            $downloadUrl = self::appendUrlQueryParams($downloadUrl, [
-                'channel'     => $releaseChannel,
-                'site_domain' => $resolvedSiteDomain,
-            ]);
-        }
+        $downloadUrl = $this->resolveFrameworkPackageUrl(
+            $rawFrameworkUrl,
+            $cleanGatewayUrl,
+            $releaseChannel,
+            $activeChannel,
+            $resolvedSiteDomain,
+            $cleanGatewayUrl ? $cleanGatewayUrl . '/download?name=framework' : ''
+        );
+        $coreDownloadUrl = $this->resolveFrameworkPackageUrl(
+            $rawCoreUrl,
+            $cleanGatewayUrl,
+            $releaseChannel,
+            $activeChannel,
+            $resolvedSiteDomain,
+            ''
+        );
 
         // 插件版本对比
         $pluginsUpdateMap = [];
@@ -378,17 +467,20 @@ class SystemUpdater
 
         return [
             'framework' => [
-                'name'            => 'hwadmin',
-                'current_version' => $currentFrameworkVer,
-                'latest_version'  => $latestFrameworkVer,
-                'has_update'      => version_compare($latestFrameworkVer, $currentFrameworkVer, '>'),
-                'update_channel'  => $activeChannel,
-                'release_channel' => $releaseChannel,
-                'release_date'    => $releaseDate,
-                'changelog'       => $frameworkChangelog,
-                'download_url'    => $downloadUrl,
-                'patch_sha256'    => $patchSha256,
-                'min_php'         => '8.1',
+                'name'              => 'hwadmin',
+                'current_version'   => $currentFrameworkVer,
+                'latest_version'    => $latestFrameworkVer,
+                'has_update'        => version_compare($latestFrameworkVer, $currentFrameworkVer, '>'),
+                'update_channel'    => $activeChannel,
+                'release_channel'   => $releaseChannel,
+                'release_date'      => $releaseDate,
+                'changelog'         => $frameworkChangelog,
+                'download_url'      => $downloadUrl,
+                'patch_sha256'      => $patchSha256,
+                'core_download_url' => $coreDownloadUrl,
+                'core_patch_sha256' => $corePatchSha256,
+                'frontend_status'   => $this->detectFrontendStatus(),
+                'min_php'           => '8.1',
             ],
             'plugins'   => $pluginsUpdateMap,
             'backups'   => $this->getBackups(),
@@ -396,9 +488,170 @@ class SystemUpdater
     }
 
     /**
+     * 规范化框架更新包 URL 并透传内测通道与站点域名参数
+     */
+    protected function resolveFrameworkPackageUrl(
+        string $rawUrl,
+        ?string $cleanGatewayUrl,
+        string $releaseChannel,
+        string $activeChannel,
+        string $resolvedSiteDomain,
+        string $fallbackUrl = ''
+    ): string {
+        if ($rawUrl !== '') {
+            if (str_starts_with($rawUrl, 'http://') || str_starts_with($rawUrl, 'https://')) {
+                $resolved = $rawUrl;
+            } elseif ($cleanGatewayUrl) {
+                $parts = parse_url($cleanGatewayUrl);
+                $scheme = $parts['scheme'] ?? 'http';
+                $host = $parts['host'] ?? '127.0.0.1';
+                $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+                $resolved = $scheme . '://' . $host . $port . '/' . ltrim($rawUrl, '/');
+            } else {
+                $resolved = $rawUrl;
+            }
+        } else {
+            $resolved = $fallbackUrl;
+        }
+
+        if ($resolved !== '' && ($releaseChannel === self::CHANNEL_BETA || $activeChannel === self::CHANNEL_BETA)) {
+            $resolved = self::appendUrlQueryParams($resolved, [
+                'channel'     => $releaseChannel,
+                'site_domain' => $resolvedSiteDomain,
+            ]);
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * 检测当前站点前端 UI 状态（区分官方纯净前端、二开自定义前端与历史站点）
+     *
+     * @return array{mode:string,is_custom:bool,preserve_frontend_default:bool,label:string,reason:string}
+     */
+    public function detectFrontendStatus(): array
+    {
+        $rootPath = rtrim(str_replace('\\', '/', $this->app->getRootPath()), '/') . '/';
+        $adminDir = $rootPath . 'public/admin/';
+        $customMarker = $adminDir . '.custom-ui';
+        $manifestFile = $adminDir . 'hwadmin-official-ui.json';
+        $indexFile = $adminDir . 'index.html';
+
+        if (is_file($customMarker)) {
+            return [
+                'mode'                      => 'custom',
+                'is_custom'                 => true,
+                'preserve_frontend_default' => true,
+                'label'                     => '二开自定义前端',
+                'reason'                    => '检测到 public/admin/.custom-ui 自定义标记，默认跳过覆盖前端构建产物',
+            ];
+        }
+
+        if (is_file($manifestFile)) {
+            $manifest = json_decode((string) file_get_contents($manifestFile), true);
+            $isOfficialFlag = is_array($manifest) && (($manifest['official'] ?? false) === true);
+            $expectedSha = is_array($manifest) ? strtolower(trim((string) ($manifest['index_html_sha256'] ?? ''))) : '';
+            $actualSha = is_file($indexFile) ? strtolower((string) hash_file('sha256', $indexFile)) : '';
+
+            if ($isOfficialFlag && $expectedSha !== '' && $actualSha !== '' && hash_equals($expectedSha, $actualSha)) {
+                return [
+                    'mode'                      => 'official',
+                    'is_custom'                 => false,
+                    'preserve_frontend_default' => false,
+                    'label'                     => '官方纯净前端',
+                    'reason'                    => 'hwadmin-official-ui.json 官方指纹与 public/admin/index.html SHA256 完全匹配，可安全同步更新前后端',
+                ];
+            }
+
+            if (!$isOfficialFlag) {
+                $reason = 'hwadmin-official-ui.json 标记为本地自定义编译前端（official=false），默认保留当前前端';
+            } elseif (!is_file($indexFile)) {
+                $reason = '缺少 public/admin/index.html，无法验证官方纯净前端指纹，默认保留当前前端';
+            } else {
+                $reason = 'public/admin/index.html SHA256 与官方指纹不一致，检测到前端已被修改或重新编译，默认保留当前前端';
+            }
+
+            return [
+                'mode'                      => 'custom',
+                'is_custom'                 => true,
+                'preserve_frontend_default' => true,
+                'label'                     => '二开自定义前端',
+                'reason'                    => $reason,
+            ];
+        }
+
+        $customModules = $this->findCustomAppModules($rootPath);
+        if (!empty($customModules)) {
+            $preview = implode('、', array_slice($customModules, 0, 3));
+            $suffix = count($customModules) > 3 ? ' 等 ' . count($customModules) . ' 个文件' : '';
+            return [
+                'mode'                      => 'legacy_custom_suspected',
+                'is_custom'                 => true,
+                'preserve_frontend_default' => true,
+                'label'                     => '疑似二开历史站点',
+                'reason'                    => "未检测到官方前端指纹清单，且发现自建业务模块（{$preview}{$suffix}），安全起见默认保留当前前端",
+            ];
+        }
+
+        return [
+            'mode'                      => 'legacy_clean',
+            'is_custom'                 => false,
+            'preserve_frontend_default' => false,
+            'label'                     => '历史纯净站点',
+            'reason'                    => '未检测到官方前端指纹清单，且未发现自建业务控制器或模型，可同步更新前后端',
+        ];
+    }
+
+    /**
+     * 扫描 app/adminapi/controller/ 与 app/common/model/ 下是否存在非官方内置的业务文件
+     *
+     * @return string[]
+     */
+    protected function findCustomAppModules(string $rootPath): array
+    {
+        $targets = [
+            'app/adminapi/controller' => array_flip(self::OFFICIAL_ADMIN_CONTROLLERS),
+            'app/common/model'        => array_flip(self::OFFICIAL_COMMON_MODELS),
+        ];
+
+        $customFiles = [];
+        foreach ($targets as $relDir => $officialSet) {
+            $fullDir = $rootPath . $relDir;
+            if (!is_dir($fullDir)) {
+                continue;
+            }
+            $normalizedDir = rtrim(str_replace('\\', '/', (string) realpath($fullDir)), '/') . '/';
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($normalizedDir, RecursiveDirectoryIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::LEAVES_ONLY
+            );
+            foreach ($iterator as $file) {
+                if ($file->isDir()) {
+                    continue;
+                }
+                $filename = $file->getFilename();
+                if (str_starts_with($filename, '.')) {
+                    continue;
+                }
+                $realFile = str_replace('\\', '/', (string) $file->getRealPath());
+                if (!str_starts_with($realFile, $normalizedDir)) {
+                    continue;
+                }
+                $relPath = substr($realFile, strlen($normalizedDir));
+                if (!isset($officialSet[$relPath])) {
+                    $customFiles[] = $relDir . '/' . $relPath;
+                }
+            }
+        }
+
+        sort($customFiles);
+        return $customFiles;
+    }
+
+    /**
      * 执行框架平滑在线升级
      */
-    public function updateFramework(?string $packageUrl = null, ?string $expectedSha256 = null): array
+    public function updateFramework(?string $packageUrl = null, ?string $expectedSha256 = null, ?bool $preserveFrontend = null): array
     {
         $packageUrl = $packageUrl !== null ? trim($packageUrl) : null;
         if ($packageUrl !== null && $packageUrl !== '') {
@@ -406,16 +659,23 @@ class SystemUpdater
         }
         $normalizedSha256 = self::normalizePatchSha256($expectedSha256);
 
+        if ($preserveFrontend === null) {
+            $frontendStatus = $this->detectFrontendStatus();
+            $effectivePreserveFrontend = (bool) ($frontendStatus['preserve_frontend_default'] ?? false);
+        } else {
+            $effectivePreserveFrontend = $preserveFrontend;
+        }
+
         $currentVer = $this->getVersion();
         $targetVer = self::CURRENT_VERSION;
         $versionFile = $this->app->getRootPath() . 'version.json';
 
-        // 1. 升级前执行主框架元数据与核心关键配置备份
+        // 1. 升级前执行主框架全量备份（含 core/、public/admin/、app/ 核心文件及配置）
         $backupId = $this->backupFramework($currentVer);
 
         // 2. 若提供了远程下载包，执行下载与补丁解压覆盖
         if ($packageUrl !== null && $packageUrl !== '') {
-            $this->downloadAndApplyPatch($packageUrl, $normalizedSha256);
+            $this->downloadAndApplyPatch($packageUrl, $normalizedSha256, $effectivePreserveFrontend);
             $targetVer = self::resolvePatchedVersion($versionFile, $packageUrl, $targetVer);
         }
 
@@ -440,11 +700,16 @@ class SystemUpdater
         // 5. 清理系统运行时缓存
         $this->clearRuntimeCache();
 
+        $modeHint = $effectivePreserveFrontend
+            ? '（已自动保留当前前端 public/admin/ 未覆写）'
+            : '（前后端已同步更新）';
+
         return [
-            'success'     => true,
-            'new_version' => $targetVer,
-            'backup_id'   => $backupId,
-            'msg'         => "HwAdmin 主框架已成功升级至最新版本 v{$targetVer}！",
+            'success'            => true,
+            'new_version'        => $targetVer,
+            'backup_id'          => $backupId,
+            'frontend_preserved' => $effectivePreserveFrontend,
+            'msg'                => "HwAdmin 主框架已成功升级至最新版本 v{$targetVer}{$modeHint}！",
         ];
     }
 
@@ -607,7 +872,7 @@ class SystemUpdater
     }
 
     /**
-     * 备份当前框架核心代码、元数据与配置
+     * 备份当前框架核心代码、前端静态构建产物、app/ 核心文件及配置
      */
     public function backupFramework(string $version): string
     {
@@ -618,8 +883,10 @@ class SystemUpdater
             @mkdir($targetDir, 0755, true);
         }
 
+        $rootPath = $this->app->getRootPath();
+
         // 备份 version.json
-        $versionFile = $this->app->getRootPath() . 'version.json';
+        $versionFile = $rootPath . 'version.json';
         if (is_file($versionFile)) {
             @copy($versionFile, $targetDir . 'version.json');
         }
@@ -631,15 +898,31 @@ class SystemUpdater
         }
 
         // 备份核心框架目录 core/
-        $coreDir = $this->app->getRootPath() . 'core';
+        $coreDir = $rootPath . 'core';
         $coreZip = $targetDir . 'core.zip';
         if (is_dir($coreDir)) {
             $this->zipDirectoryToFile($coreDir, $coreZip);
         }
 
+        // 备份前端编译产物目录 public/admin/
+        $publicAdminDir = $rootPath . 'public' . DIRECTORY_SEPARATOR . 'admin';
+        $publicAdminZip = $targetDir . 'public_admin.zip';
+        if (is_dir($publicAdminDir)) {
+            $this->zipDirectoryToFile($publicAdminDir, $publicAdminZip);
+        }
+
+        // 备份被 OTA 覆盖范围的 app/ 核心文件
+        $appDir = $rootPath . 'app';
+        $appCoreZip = $targetDir . 'app_core.zip';
+        if (is_dir($appDir)) {
+            $this->zipAppCoreFiles($appDir, $appCoreZip);
+        }
+
         $totalBytes = (is_file($targetDir . 'version.json') ? (int) filesize($targetDir . 'version.json') : 0)
             + (is_file($targetDir . 'hwadmin.php') ? (int) filesize($targetDir . 'hwadmin.php') : 0)
-            + (is_file($coreZip) ? (int) filesize($coreZip) : 0);
+            + (is_file($coreZip) ? (int) filesize($coreZip) : 0)
+            + (is_file($publicAdminZip) ? (int) filesize($publicAdminZip) : 0)
+            + (is_file($appCoreZip) ? (int) filesize($appCoreZip) : 0);
         $sizeLabel = $totalBytes > 0 ? round($totalBytes / 1024, 1) . ' KB' : '0 KB';
 
         $meta = [
@@ -654,6 +937,33 @@ class SystemUpdater
 
         $this->saveBackupRecord($meta);
         return $backupId;
+    }
+
+    /**
+     * 备份被 OTA 覆盖范围的 app/ 核心文件（保留用户自建业务模块不冗余打包）
+     */
+    protected function zipAppCoreFiles(string $appDir, string $zipFile): void
+    {
+        if (!class_exists(ZipArchive::class) || !is_dir($appDir)) {
+            return;
+        }
+        $normalizedAppRoot = rtrim(str_replace('\\', '/', $appDir), '/') . '/';
+        $zip = new ZipArchive();
+        if ($zip->open($zipFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            return;
+        }
+        $added = 0;
+        foreach (self::OFFICIAL_APP_CORE_FILES as $relPath) {
+            $fullPath = $normalizedAppRoot . $relPath;
+            if (is_file($fullPath)) {
+                $zip->addFile($fullPath, $relPath);
+                $added++;
+            }
+        }
+        $zip->close();
+        if ($added === 0 && is_file($zipFile)) {
+            @unlink($zipFile);
+        }
     }
 
     /**
@@ -765,26 +1075,39 @@ class SystemUpdater
         }
 
         if ($target['type'] === 'framework') {
-            $dir = $target['path'];
+            $dir = rtrim((string) $target['path'], '/\\') . DIRECTORY_SEPARATOR;
+            $rootPath = $this->app->getRootPath();
+
             $coreZip = $dir . 'core.zip';
-            if (class_exists(ZipArchive::class) && is_file($coreZip)) {
-                $zip = new ZipArchive();
-                if ($zip->open($coreZip) === true) {
-                    $zip->extractTo($this->app->getRootPath() . 'core');
-                    $zip->close();
-                }
+            if (is_file($coreZip)) {
+                $this->extractBackupZipSafely($coreZip, $rootPath . 'core', false);
             }
+
+            $publicAdminZip = $dir . 'public_admin.zip';
+            if (is_file($publicAdminZip)) {
+                $this->extractBackupZipSafely($publicAdminZip, $rootPath . 'public' . DIRECTORY_SEPARATOR . 'admin', true);
+            }
+
+            $appCoreZip = $dir . 'app_core.zip';
+            if (is_file($appCoreZip)) {
+                $this->extractBackupZipSafely($appCoreZip, $rootPath . 'app', false);
+            }
+
             if (is_file($dir . 'version.json')) {
-                @copy($dir . 'version.json', $this->app->getRootPath() . 'version.json');
+                @copy($dir . 'version.json', $rootPath . 'version.json');
             }
             if (is_file($dir . 'hwadmin.php')) {
-                @copy($dir . 'hwadmin.php', $this->app->getConfigPath() . 'hwadmin.php');
+                $configDest = $this->app->getConfigPath() . 'hwadmin.php';
+                @copy($dir . 'hwadmin.php', $configDest);
+                if (function_exists('opcache_invalidate')) {
+                    @opcache_invalidate($configDest, true);
+                }
             }
             $this->clearRuntimeCache();
 
             return [
                 'success' => true,
-                'msg'     => "已成功将 HwAdmin 主框架版本回滚至 {$target['version']}！",
+                'msg'     => "已成功将 HwAdmin 主框架版本回滚至 {$target['version']}（含前后端代码与核心配置）！",
             ];
         }
 
@@ -928,9 +1251,94 @@ class SystemUpdater
     }
 
     /**
+     * 安全还原框架备份 ZIP（防路径穿越，并在覆写 .php 后执行 OPcache 失效）
+     */
+    protected function extractBackupZipSafely(string $zipPath, string $targetDir, bool $cleanTargetFilesFirst = false): void
+    {
+        if (!class_exists(ZipArchive::class) || !is_file($zipPath)) {
+            return;
+        }
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath) !== true) {
+            throw new ApiException("无法打开备份快照压缩包：{$zipPath}");
+        }
+
+        $entries = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $rawOrig = (string) $zip->getNameIndex($i);
+            if ($rawOrig === '' || str_contains($rawOrig, "\0")) {
+                $zip->close();
+                throw new ApiException('备份快照包含非法路径条目');
+            }
+            $rawName = str_replace('\\', '/', $rawOrig);
+            if (str_ends_with($rawName, '/')) {
+                continue;
+            }
+            if (str_starts_with($rawName, '/') || preg_match('/^[A-Za-z]:/', $rawName) || in_array('..', explode('/', $rawName), true)) {
+                $zip->close();
+                throw new ApiException("备份快照包含非法路径条目：{$rawName}");
+            }
+            $entries[] = ['index' => $i, 'rel' => ltrim($rawName, '/')];
+        }
+
+        if ($cleanTargetFilesFirst && !empty($entries) && is_dir($targetDir)) {
+            $this->cleanDirectoryExceptGitkeep($targetDir);
+        }
+        if (!is_dir($targetDir)) {
+            @mkdir($targetDir, 0755, true);
+        }
+
+        $destBase = rtrim(str_replace('\\', '/', $targetDir), '/') . '/';
+        foreach ($entries as $entry) {
+            if ($entry['rel'] === '') {
+                continue;
+            }
+            $content = $zip->getFromIndex($entry['index']);
+            if ($content === false) {
+                continue;
+            }
+            $dest = $destBase . $entry['rel'];
+            $destParent = dirname($dest);
+            if (!is_dir($destParent)) {
+                @mkdir($destParent, 0755, true);
+            }
+            if (@file_put_contents($dest, $content) === false) {
+                $zip->close();
+                throw new ApiException("回滚写入文件失败：{$entry['rel']}");
+            }
+            @chmod($dest, 0644);
+            if (str_ends_with(strtolower($dest), '.php') && function_exists('opcache_invalidate')) {
+                @opcache_invalidate($dest, true);
+            }
+        }
+        $zip->close();
+    }
+
+    /**
+     * 清理目录内旧文件与空子目录（保留 .gitkeep）
+     */
+    protected function cleanDirectoryExceptGitkeep(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($iterator as $item) {
+            if ($item->isDir()) {
+                @rmdir($item->getPathname());
+            } elseif ($item->getFilename() !== '.gitkeep') {
+                @unlink($item->getPathname());
+            }
+        }
+    }
+
+    /**
      * 校验补丁文件 SHA256（若提供预期摘要）并执行安全解压应用
      */
-    public function verifyAndApplyPatchArchive(string $zipPath, ?string $expectedSha256 = null): int
+    public function verifyAndApplyPatchArchive(string $zipPath, ?string $expectedSha256 = null, bool $preserveFrontend = false): int
     {
         $normalizedSha256 = self::normalizePatchSha256($expectedSha256);
         if ($normalizedSha256 !== null) {
@@ -943,13 +1351,13 @@ class SystemUpdater
             }
         }
 
-        return $this->applyPatchArchive($zipPath);
+        return $this->applyPatchArchive($zipPath, $preserveFrontend);
     }
 
     /**
      * 下载补丁并安全解压应用（保留站点环境配置、运行库与上传文件）
      */
-    protected function downloadAndApplyPatch(string $url, ?string $expectedSha256 = null): void
+    protected function downloadAndApplyPatch(string $url, ?string $expectedSha256 = null, bool $preserveFrontend = false): void
     {
         $normalizedSha256 = self::normalizePatchSha256($expectedSha256);
         $tmpFile = $this->runtimeBackupDir . 'patch_' . time() . '.zip';
@@ -968,7 +1376,7 @@ class SystemUpdater
         }
 
         try {
-            $this->verifyAndApplyPatchArchive($tmpFile, $normalizedSha256);
+            $this->verifyAndApplyPatchArchive($tmpFile, $normalizedSha256, $preserveFrontend);
         } finally {
             @unlink($tmpFile);
         }
@@ -977,7 +1385,7 @@ class SystemUpdater
     /**
      * 校验并安全解压升级补丁压缩包到当前后端根目录
      */
-    public function applyPatchArchive(string $zipPath): int
+    public function applyPatchArchive(string $zipPath, bool $preserveFrontend = false): int
     {
         if (!class_exists(ZipArchive::class)) {
             throw new ApiException('当前 PHP 环境缺少 zip 扩展');
@@ -1032,6 +1440,9 @@ class SystemUpdater
                 : $rawName;
             $rel = ltrim($rel, '/');
             if ($rel === '' || self::isProtectedPatchPath($rel)) {
+                continue;
+            }
+            if ($preserveFrontend && ($rel === 'public/admin' || str_starts_with($rel, 'public/admin/'))) {
                 continue;
             }
             $content = $zip->getFromIndex($idx);

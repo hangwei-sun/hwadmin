@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -42,4 +43,29 @@ for (const iconName of ['favicon.ico', 'favicon.svg']) {
     cpSync(srcIcon, resolve(targetPublicRoot, iconName))
   }
 }
-console.log(`[build:sync] 已将 admin-ui/dist 同步至 ${targetDir}（含根站点 favicon 同步）`)
+
+// 生成前端构建指纹清单，用于 OTA 升级区分“官方纯净前端”与“二开自定义编译前端”
+let frameworkVersion = '1.6.5'
+try {
+  const pkg = JSON.parse(readFileSync(resolve(adminUiDir, 'package.json'), 'utf8'))
+  if (pkg?.version) {
+    frameworkVersion = String(pkg.version).replace(/^v/i, '')
+  }
+} catch {
+  // 忽略读取失败，使用默认版本号
+}
+
+const targetIndexPath = resolve(targetDir, 'index.html')
+const indexHtmlSha256 = createHash('sha256').update(readFileSync(targetIndexPath)).digest('hex')
+const isOfficialBuild = process.env.HWADMIN_OFFICIAL_BUILD === '1'
+const uiManifest = {
+  official: isOfficialBuild,
+  version: frameworkVersion,
+  index_html_sha256: indexHtmlSha256,
+  built_at: new Date().toISOString(),
+}
+writeFileSync(resolve(targetDir, 'hwadmin-official-ui.json'), `${JSON.stringify(uiManifest, null, 2)}\n`, 'utf8')
+
+console.log(
+  `[build:sync] 已将 admin-ui/dist 同步至 ${targetDir}（含根站点 favicon 与指纹 hwadmin-official-ui.json，official=${isOfficialBuild}）`
+)

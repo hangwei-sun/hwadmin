@@ -72,6 +72,17 @@ def get_git_commit(project_root: Path) -> str:
     return "unknown"
 
 
+def build_official_ui_manifest_bytes(version: str, index_html_path: Path) -> bytes:
+    """生成官方纯净前端指纹清单 hwadmin-official-ui.json 字节内容。"""
+    payload = {
+        "official": True,
+        "version": version.removeprefix("v"),
+        "index_html_sha256": calculate_sha256(index_html_path),
+        "built_at": datetime.now(timezone.utc).isoformat(),
+    }
+    return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
 def detect_default_version(project_root: Path) -> str:
     """从 server/config/hwadmin.php 读取默认框架版本号。"""
     config_file = project_root / "server/config/hwadmin.php"
@@ -79,7 +90,7 @@ def detect_default_version(project_root: Path) -> str:
         m = re.search(r"'version'\s*=>\s*'(\d+\.\d+\.\d+)'", config_file.read_text(encoding="utf-8"))
         if m:
             return "v" + m.group(1)
-    return "v1.6.4"
+    return "v1.6.5"
 
 
 def render_deploy_docs(version: str) -> dict[str, str]:
@@ -294,6 +305,16 @@ def build_deploy_package(version: str, project_root: Path, server_dir: Path, rel
             doc_path.write_text(doc_content, encoding="utf-8")
             packed_map[doc_name] = (doc_path, doc_name, doc_path.stat().st_size)
 
+        admin_index_html = server_dir / "public/admin/index.html"
+        if admin_index_html.is_file():
+            official_ui_path = doc_tmp_dir / "hwadmin-official-ui.json"
+            official_ui_path.write_bytes(build_official_ui_manifest_bytes(version, admin_index_html))
+            packed_map["public/admin/hwadmin-official-ui.json"] = (
+                official_ui_path,
+                "public/admin/hwadmin-official-ui.json",
+                official_ui_path.stat().st_size,
+            )
+
         files_to_pack = list(packed_map.values())
 
         # 包含前端源码备份 sources/admin-ui
@@ -479,6 +500,8 @@ def build_dev_package(
                     continue
                 if rel.startswith("server/public/plugins/") and file not in {".gitkeep", ".gitignore"}:
                     continue
+                if rel == "server/public/admin/hwadmin-official-ui.json":
+                    continue
                 files_to_pack.append((full_p, rel, full_p.stat().st_size))
 
     # 2. admin-ui/ 目录
@@ -562,6 +585,11 @@ def build_dev_package(
                 files_to_pack.append((full_p, rel, full_p.stat().st_size))
 
     manifest_map = {relative: calculate_sha256(path) for path, relative, _ in files_to_pack}
+    official_ui_bytes = None
+    admin_index_html = server_dir / "public/admin/index.html"
+    if admin_index_html.is_file():
+        official_ui_bytes = build_official_ui_manifest_bytes(version, admin_index_html)
+        manifest_map["server/public/admin/hwadmin-official-ui.json"] = hashlib.sha256(official_ui_bytes).hexdigest()
     git_commit = get_git_commit(project_root)
 
     required_files = [
@@ -641,6 +669,8 @@ def build_dev_package(
     with zipfile.ZipFile(zip_path, mode="w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for file_full_path, rel_path, _ in files_to_pack:
             zf.write(file_full_path, arcname=rel_path)
+        if official_ui_bytes is not None:
+            zf.writestr("server/public/admin/hwadmin-official-ui.json", official_ui_bytes)
         zf.writestr('artifact-manifest.json', json.dumps(artifact_manifest, ensure_ascii=False, indent=2))
 
     with zipfile.ZipFile(zip_path, mode="r") as zf:
