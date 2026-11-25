@@ -99,9 +99,14 @@ jobs:
             echo "Running SQLite smoke test suite..."
             chmod +x tests/smoke.sh
             bash tests/smoke.sh
-            DB_DRIVER=sqlite DB_TYPE=sqlite DB_NAME=runtime/hwadmin.sqlite DB_PREFIX=hw_ php think migrate:run
-            DB_DRIVER=sqlite DB_TYPE=sqlite DB_NAME=runtime/hwadmin.sqlite DB_PREFIX=hw_ php think hw:inspect --json > /dev/null
-            DB_DRIVER=sqlite DB_TYPE=sqlite DB_NAME=runtime/hwadmin.sqlite DB_PREFIX=hw_ php think hw:crud --table=hw_admin --dry-run --incremental
+            printf "%s\n" \
+              "APP_DEBUG=true" \
+              "DB_DRIVER=sqlite" \
+              "DB_NAME=runtime/hwadmin.sqlite" \
+              "DB_PREFIX=hw_" > .env
+            php think migrate:run
+            php think hw:inspect --json > /dev/null
+            php think hw:crud --table=hw_admin --dry-run --incremental
           elif [ "${{ matrix.db }}" = "mysql" ]; then
             echo "Running MySQL 8.0 validation..."
             printf "%s\n" \
@@ -120,9 +125,10 @@ jobs:
             php think migrate:rollback -t 0
             php think migrate:run
             php think hw:install --username=admin --password=Admin123456! --db-driver=mysql --db-host=127.0.0.1 --db-port=3306 --db-name=hwadmin_test --db-user=root --db-pass=root --force
+            sed -i 's/^APP_DEBUG.*/APP_DEBUG = true/' .env
             php think hw:inspect --json > /dev/null
             php think hw:crud --table=hw_admin --dry-run --incremental
-            PHP_APP_DEBUG=true php -S 127.0.0.1:18080 -t public public/router.php >/dev/null 2>&1 &
+            php -S 127.0.0.1:18080 -t public public/router.php >/dev/null 2>&1 &
             CI_HTTP_PID=$!
             trap 'kill "$CI_HTTP_PID" 2>/dev/null || true' EXIT
             for i in $(seq 1 25); do
@@ -163,9 +169,10 @@ jobs:
             php think migrate:rollback -t 0
             php think migrate:run
             php think hw:install --username=admin --password=Admin123456! --db-driver=pgsql --db-host=127.0.0.1 --db-port=5432 --db-name=hwadmin_test --db-user=postgres --db-pass=root --force
+            sed -i 's/^APP_DEBUG.*/APP_DEBUG = true/' .env
             php think hw:inspect --json > /dev/null
             php think hw:crud --table=hw_admin --dry-run --incremental
-            PHP_APP_DEBUG=true php -S 127.0.0.1:18080 -t public public/router.php >/dev/null 2>&1 &
+            php -S 127.0.0.1:18080 -t public public/router.php >/dev/null 2>&1 &
             CI_HTTP_PID=$!
             trap 'kill "$CI_HTTP_PID" 2>/dev/null || true' EXIT
             for i in $(seq 1 25); do
